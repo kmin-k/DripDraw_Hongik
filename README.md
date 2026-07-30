@@ -65,6 +65,8 @@ git switch -c feature/<작업명>
 - [시스템 아키텍처](docs/architecture.md) — 책임 분리와 API 계약
 - [Felicita Arc BLE 프로토콜](docs/scale-protocol.md) — 패킷·명령·검증 체크리스트
 - [Rule Table](docs/rule-table.md) — Target Curve 계산 규칙
+- [데이터 모델 (ERD)](docs/erd.md) — 테이블과 설계 근거
+- [API 명세](docs/api.md) — 엔드포인트별 요청·응답
 
 ## 팀
 
