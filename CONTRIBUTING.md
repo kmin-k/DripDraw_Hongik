@@ -2,7 +2,7 @@
 
 ## 시작 전 확인
 
-이 프로젝트의 통합 브랜치는 `dev`입니다. `main`은 마일스톤 단위 릴리스용 보호 브랜치이며 직접 작업하거나 직접 push하지 않습니다.
+이 프로젝트의 통합 브랜치는 `dev`입니다. `main`은 마일스톤 단위 릴리스용 보호 브랜치이며 직접 작업하거나 직접 push 금지.
 
 ```bash
 git switch dev
@@ -69,7 +69,7 @@ docs: document BLE packet offsets
 - 패키지 매니저와 잠금 파일 정책
 - 포매터·린터·테스트 명령
 - 팀원별 1차 담당 영역
-- Rule Table 미확정 항목 — [`docs/rule-table.md` §8](docs/rule-table.md) 참고. Phase 3 착수 전에 결정해야 합니다.
+- Rule Table 원본의 저장 위치와 변경 승인 방식
 
 애플리케이션 스캐폴딩 시 위 항목을 확정하고 이 문서를 업데이트합니다.
 
