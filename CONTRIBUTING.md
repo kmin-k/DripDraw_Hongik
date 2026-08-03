@@ -63,13 +63,61 @@ docs: document BLE packet offsets
 - [ ] 로그, 비밀값, 로컬 DB, 빌드 결과물이 포함되지 않았다.
 - [ ] BLE/API/DB 계약 변경을 팀에 공유했다.
 
-## 아직 팀에서 확정할 항목
+## 개발 환경
 
-- Node.js 및 Python 지원 버전
-- 패키지 매니저와 잠금 파일 정책
-- 포매터·린터·테스트 명령
-- 팀원별 1차 담당 영역
-- Rule Table 원본의 저장 위치와 변경 승인 방식
+**버전은 팀 전원이 동일하게 맞춥니다.** 다르면 잠금 파일이 계속 충돌합니다.
 
-애플리케이션 스캐폴딩 시 위 항목을 확정하고 이 문서를 업데이트합니다.
+| 항목 | 버전 | 고정 방법 |
+|---|---|---|
+| Node.js | **22 LTS** | `.nvmrc` |
+| Python | **3.12** | `backend/.python-version` |
+
+Node 24 LTS도 동작하지만 올리려면 **팀 전원이 동시에** 바꿉니다.
+Python 3.13은 `opencv-contrib-python` 휠 제공이 늦을 수 있어 3.12로 고정합니다.
+
+### 패키지 매니저
+
+| | 도구 | 잠금 파일 |
+|---|---|---|
+| frontend | **npm** | `package-lock.json` — **커밋함** |
+| backend | **venv + pip** | `requirements.txt`, `requirements-dev.txt` — **커밋함** |
+
+npm은 Node에 기본 포함되어 팀원이 따로 설치할 게 없습니다. pnpm·yarn·uv·poetry는 쓰지 않습니다 — 3인 졸업작품 규모에서 얻는 이득보다 환경 차이로 잃는 시간이 큽니다.
+
+### 린터 · 포매터 · 테스트
+
+```bash
+# frontend
+npm run lint          # ESLint
+npm run format        # Prettier
+npm run test          # Vitest
+
+# backend
+ruff check .          # 린트
+ruff format .         # 포맷 (black 대신 ruff 단일 도구)
+pytest                # 테스트
+```
+
+`ruff`는 린터와 포매터를 겸하므로 `black`·`isort`·`flake8`을 따로 두지 않습니다.
+
+### 실행 포트
+
+| | 포트 | 비고 |
+|---|---|---|
+| frontend (Vite) | `5173` | |
+| backend (uvicorn) | `8000` | Swagger는 `/docs` |
+
+백엔드 CORS 허용 origin은 `http://localhost:5173`입니다.
+
+## Rule Table 원본 관리
+
+**[`docs/rule-table.md`](docs/rule-table.md)가 단일 기준입니다.** 엑셀 원본(`BrewIQ_RuleTable_v0.1.xlsx`)은 팀장 로컬 보관 참고 자료이며, 레포에 넣지 않습니다.
+
+규칙을 바꾸려면:
+
+1. `docs/rule-table.md`를 수정하는 PR을 올린다
+2. §7 회귀 테스트 기준값에 영향이 있으면 **`pytest` 기준값도 같은 PR에서 갱신**한다
+3. 팀원 1명 이상 리뷰 후 머지한다
+
+코드와 문서가 어긋나면 **문서가 아니라 둘 다 고칩니다.** 엑셀과 문서가 다르면 팀에 알리고 양쪽을 함께 수정합니다.
 

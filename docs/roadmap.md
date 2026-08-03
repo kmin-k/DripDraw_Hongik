@@ -81,7 +81,7 @@
 - [ ] 프론트 하드코딩 곡선을 API 호출로 교체
 - [ ] RecipeSetup 화면 (입력 → 곡선 미리보기)
 - [ ] **pytest 회귀 테스트** — [`rule-table.md` §7 검증 예시](rule-table.md#7-검증-예시-회귀-테스트-기준값)를 기준값으로 고정
-- [ ] `rule-table.md` §9 미확정 항목 선결
+- [x] `rule-table.md` §8 규칙 확정 완료 — §9는 실측 후 재검토 대상
 
 **완료 기준**: 입력값을 바꾸면 Target Curve 모양이 즉시 달라짐
 
@@ -123,9 +123,7 @@
 
 ## 기존 실험 코드
 
-`feature/bluetooth-test` 브랜치에 중간발표용 프로토타입이 있습니다.
+중간발표용 프로토타입(`BLE.html`, `brew_simulation.html`)이 있던 `feature/bluetooth-test` 브랜치는 **삭제했습니다.**
 
-- `BLE.html` — Web Bluetooth 연결 시도 + Chart.js 그래프 + RMSE 계산 (`acceptAllDevices`, GATT 특성 연결은 미구현)
-- `brew_simulation.html` — 4차 추출 시뮬레이션
-
-Phase 1·2의 참고 자료로만 쓰고, 정식 구현은 `frontend/src/`에 TypeScript로 새로 작성합니다.
+Web Bluetooth 연결 시도와 Chart.js 그래프까지는 동작했으나 GATT 특성 연결이 미구현이었고, 정식 구현은 `frontend/src/`에 TypeScript로 새로 작성하기로 했으므로 참고 가치가 낮다고 판단했습니다.
+BLE 연결 방식은 [`scale-protocol.md`](scale-protocol.md)의 검증된 명세를 기준으로 합니다.
