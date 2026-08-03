@@ -112,7 +112,7 @@ FastAPI가 `/docs`에 Swagger를 자동 생성하므로, **이 문서는 계약 
 }
 ```
 
-> 위 값은 [`rule-table.md` §7 검증 예시](rule-table.md)와 동일합니다. pytest 회귀 테스트의 기준으로 그대로 씁니다.
+> 위 값은 [`rule-table.md` 7절 검증 예시](rule-table.md)와 동일합니다. pytest 회귀 테스트의 기준으로 그대로 씁니다.
 
 `drinkType`이 `ICE`면 `iceMessage`에 `"얼음이 가득 담긴 컵에 부어 드세요!"`가 들어갑니다.
 
@@ -120,7 +120,7 @@ FastAPI가 `/docs`에 Swagger를 자동 생성하므로, **이 문서는 계약 
 
 | 필드 | 제약 |
 |---|---|
-| `doseG` | 정수, **10 ~ 30** (`ge=10, le=30`). 30 초과 시 주수 간 대기가 음수가 되어 곡선이 깨집니다 → [`rule-table.md` §8-1, §8-2](rule-table.md) |
+| `doseG` | 정수, **10 ~ 30** (`ge=10, le=30`). 30 초과 시 주수 간 대기가 음수가 되어 곡선이 깨집니다 → [`rule-table.md` 8-1절, 8-2절](rule-table.md) |
 | `d50Um` | 실수 (μm) |
 | `drinkType` | `HOT` \| `ICE` |
 
@@ -226,9 +226,9 @@ Target이 구간 선형이므로 보간이 근사가 아니라 **정확**하고,
 ```
 
 `changes` 배열이 **발표의 핵심**입니다. "왜 이렇게 바뀌었는지"를 화면에 그대로 보여줄 수 있어야 합니다.
-조정 폭은 [`rule-table.md` §8-4, §8-6](rule-table.md)에 확정돼 있습니다 — Ratio ±1.0, 물 온도 ±1℃, 유량 ±0.5 g/s, 분쇄도 ±1단계(50 μm).
+조정 폭은 [`rule-table.md` 8-4절, 8-6절](rule-table.md)에 확정돼 있습니다 — Ratio ±1.0, 물 온도 ±1℃, 유량 ±0.5 g/s, 분쇄도 ±1단계(50 μm).
 
-조정이 일부 또는 전부 적용되지 못하면 `notice`로 이유를 알립니다 ([`rule-table.md` §8-4, §8-6](rule-table.md)의 충돌·클램프 규칙).
+조정이 일부 또는 전부 적용되지 못하면 `notice`로 이유를 알립니다 ([`rule-table.md` 8-4절, 8-6절](rule-table.md)의 충돌·클램프 규칙).
 
 ```json
 { "changes": [], "notice": "분쇄도 균일성을 확인해 보세요" }
@@ -259,6 +259,6 @@ PATCH /api/feedback/{id}   { "applied": true }
 
 ## 확정된 사항
 
-- `recipe/adjust`의 조정 폭 — [`rule-table.md` §8-4, §8-6](rule-table.md)
+- `recipe/adjust`의 조정 폭 — [`rule-table.md` 8-4절, 8-6절](rule-table.md)
 - **곡선 샘플링 100 ms 고정, 저장 시 다운샘플링 하지 않음.** 205초 기준 약 2,050점(JSON 약 45 KB)으로 데모 범위에서 문제없습니다. 히스토리 목록이 느려지면 그때 요약본(1 Hz) 컬럼을 별도로 추가합니다 — 미리 최적화하지 않습니다.
 - RMSE 정렬 방식 — 위 `POST /api/brews` 참고

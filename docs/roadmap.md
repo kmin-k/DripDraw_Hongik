@@ -80,8 +80,8 @@
 - [ ] `POST /api/recipe/generate`
 - [ ] 프론트 하드코딩 곡선을 API 호출로 교체
 - [ ] RecipeSetup 화면 (입력 → 곡선 미리보기)
-- [ ] **pytest 회귀 테스트** — [`rule-table.md` §7 검증 예시](rule-table.md#7-검증-예시-회귀-테스트-기준값)를 기준값으로 고정
-- [x] `rule-table.md` §8 규칙 확정 완료 — §9는 실측 후 재검토 대상
+- [ ] **pytest 회귀 테스트** — [`rule-table.md` 7절 검증 예시](rule-table.md#7-검증-예시-회귀-테스트-기준값)를 기준값으로 고정
+- [x] `rule-table.md` 8절 규칙 확정 완료 — 9절은 실측 후 재검토 대상
 
 **완료 기준**: 입력값을 바꾸면 Target Curve 모양이 즉시 달라짐
 

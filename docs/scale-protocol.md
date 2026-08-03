@@ -51,6 +51,11 @@ export function parseWeight(data: DataView): number {
 
 ## 실물 검증 체크리스트
 
+검증에는 [`tools/hex-dump.html`](../tools/hex-dump.html)을 씁니다. 브라우저로 열면 되고 설치·빌드가 필요 없습니다.
+`file://`로 열어도 동작하지만 안 되면 레포 루트에서 `python -m http.server 8080` 후 `http://localhost:8080/tools/hex-dump.html`로 접속하세요.
+
+**"바이트별 변화 분석"이 핵심입니다.** 저울에 물을 조금씩 올리면서 파란색으로 바뀌는 인덱스를 보면, 아래 오프셋 가정이 맞는지 즉시 드러납니다.
+
 - [ ] 공식 앱과의 기존 연결을 완전히 해제했다.
 - [ ] Service/Characteristic UUID를 실제 GATT에서 확인했다.
 - [ ] 빈 저울, 100 g 기준물, 음수 무게의 raw hex를 기록했다.
@@ -58,6 +63,7 @@ export function parseWeight(data: DataView): number {
 - [ ] notify 주기와 연결 끊김 동작을 기록했다.
 - [ ] 명령별 write 결과를 확인했다.
 - [ ] 검증한 저울 펌웨어 버전과 날짜를 함께 기록했다.
+- [ ] 덤프 로그(.txt)를 저장하고, 문서와 다른 점을 이 파일에 반영했다.
 
 raw hex에는 개인 정보가 없더라도 원본 로그와 해석 결과를 구분해 보관합니다.
 
