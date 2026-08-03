@@ -115,7 +115,19 @@ FastAPI가 `/docs`에 Swagger를 자동 생성하므로, **이 문서는 계약 
 
 `drinkType`이 `ICE`면 `iceMessage`에 `"얼음이 가득 담긴 컵에 부어 드세요!"`가 들어갑니다.
 
-**400 조건**: 원두량이 상한을 넘어 주수 간 대기가 음수가 되는 경우 ([`rule-table.md` §8-1](rule-table.md) 결정 대기 중).
+**입력 제약**
+
+| 필드 | 제약 |
+|---|---|
+| `doseG` | 정수, **10 ~ 30** (`ge=10, le=30`). 30 초과 시 주수 간 대기가 음수가 되어 곡선이 깨집니다 → [`rule-table.md` §8-1, §8-2](rule-table.md) |
+| `d50Um` | 실수 (μm) |
+| `drinkType` | `HOT` \| `ICE` |
+
+**400 응답 예시** — 원두량 상한 초과
+
+```json
+{ "detail": "doseG must be between 10 and 30 (got 40)" }
+```
 
 ---
 
@@ -216,5 +228,4 @@ PATCH /api/feedback/{id}   { "applied": true }
 ## 미확정
 
 - `recipe/adjust`의 조정 폭 수치 — Rule Table v0.2에서 확정
-- 원두량 상한 또는 대기 시간 음수 처리 방식
 - 곡선 샘플링 간격(100 ms 제안)과 저장 시 다운샘플링 여부
