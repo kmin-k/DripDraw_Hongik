@@ -34,6 +34,7 @@ FastAPI가 `/docs`에 Swagger를 자동 생성하므로, **이 문서는 계약 
 | `GET` | `/api/beans` | 0 |
 | `POST` | `/api/recipe/generate` | 3 |
 | `POST` | `/api/recipe/adjust` | 4 |
+| `PATCH` | `/api/feedback/{id}` | 4 |
 | `POST` | `/api/brews` | 2 |
 | `GET` | `/api/brews` | 2 |
 | `GET` | `/api/brews/{id}` | 5 |
@@ -227,11 +228,14 @@ Target이 구간 선형이므로 보간이 근사가 아니라 **정확**하고,
 `changes` 배열이 **발표의 핵심**입니다. "왜 이렇게 바뀌었는지"를 화면에 그대로 보여줄 수 있어야 합니다.
 조정 폭은 [`rule-table.md` §8-4, §8-6](rule-table.md)에 확정돼 있습니다 — Ratio ±1.0, 물 온도 ±1℃, 유량 ±0.5 g/s, 분쇄도 ±1단계(50 μm).
 
-신맛·쓴맛이 **동시에 "강함"**이면 서로 상쇄되어 조정하지 않고, `changes`를 빈 배열로 두는 대신 안내 메시지를 반환합니다.
+조정이 일부 또는 전부 적용되지 못하면 `notice`로 이유를 알립니다 ([`rule-table.md` §8-4, §8-6](rule-table.md)의 충돌·클램프 규칙).
 
 ```json
 { "changes": [], "notice": "분쇄도 균일성을 확인해 보세요" }
 ```
+
+- 신맛·쓴맛이 서로 반대 방향(둘 다 강함, 둘 다 약함)이면 상쇄 — 조정 없이 위 안내
+- Ratio 증가로 주수 간 대기가 음수가 되면 해당 조정 제외 — `"현재 원두량에서는 물을 더 늘릴 수 없어요"`
 
 적용 여부 기록:
 

@@ -41,20 +41,9 @@ React ──HTTP/REST──> FastAPI ──> SQLite
 
 레시피 생성, 보정, 추출 기록 저장, Vision 분석은 서버가 담당합니다.
 
-## 초기 API 계약
+## API 계약
 
-| Method | Endpoint | 역할 |
-|---|---|---|
-| `GET` | `/health` | 서버 상태 확인 |
-| `POST` | `/api/recipe/generate` | 입력값으로 Target Curve 생성 |
-| `POST` | `/api/recipe/adjust` | 맛 평가로 다음 레시피 보정 |
-| `POST` | `/api/brews` | 추출 기록 저장 |
-| `GET` | `/api/brews` | 추출 히스토리 조회 |
-| `GET` | `/api/brews/{id}` | 추출 상세 조회 |
-| `POST` | `/api/beans` | 원두 등록 |
-| `POST` | `/api/vision/grind` | 분쇄도 이미지 분석 |
-
-이 표는 구현 전 초안입니다. 요청·응답 스키마가 정해지면 별도 API 문서 또는 OpenAPI 명세를 기준으로 삼습니다.
+엔드포인트 목록과 요청·응답 스키마는 [`api.md`](api.md)가 기준입니다. 구현 후에는 FastAPI가 생성하는 OpenAPI(`/docs`)를 함께 참조합니다.
 
 ## 권장 모노레포 구조
 

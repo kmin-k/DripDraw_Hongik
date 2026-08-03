@@ -7,7 +7,7 @@
 erDiagram
     BEAN ||--o{ RECIPE : "로 만든"
     RECIPE ||--o{ BREW : "로 추출한"
-    RECIPE ||--o| RECIPE : "보정 전/후"
+    RECIPE ||--o{ RECIPE : "보정 전/후"
     BREW ||--o| FEEDBACK : "맛 평가"
     FEEDBACK ||--o| RECIPE : "제안된 다음 레시피"
     BEAN ||--o{ GRIND_ANALYSIS : "분쇄도 측정"
