@@ -7,6 +7,8 @@
 
 # --- 고정 상수 (2절) ---
 BLOOM_POUR_SEC = 10  # Bloom 푸어 시간, 모든 레시피 동일
+# rule_engine은 4회 주수를 명시적으로 구성하므로 이 값을 읽지는 않습니다.
+# rule-table.md 2절과의 대조용으로 남겨 둡니다. 주수 횟수를 바꾸려면 여기와 엔진을 함께 고칩니다.
 POUR_COUNT = 4  # Bloom 포함 (Bloom·2차·3차·4차)
 
 RATIO = {"HOT": 15.0, "ICE": 10.0}  # 1 : N
