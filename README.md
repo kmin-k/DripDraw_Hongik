@@ -27,14 +27,14 @@ Felicita Arc ──BLE──> React ──> 실시간 그래프·RMSE
 
 | 영역 | 기술 |
 |---|---|
-| Frontend | React, TypeScript, Vite, Tailwind CSS, Recharts, Zustand |
+| Frontend | React, TypeScript, Vite, Tailwind CSS, Recharts |
 | BLE | Web Bluetooth API |
 | Backend | FastAPI, Python, SQLAlchemy, SQLite |
 | Vision | OpenCV (`opencv-contrib`) |
 
 ## 현재 상태
 
-현재 `dev` 브랜치에서 초기 협업 환경을 정리한 단계입니다. 애플리케이션 스캐폴딩과 의존성 설치는 아직 진행하지 않았습니다.
+Phase 0 완료. 프론트·백엔드 스캐폴딩과 DB 모델이 올라가 있고, 다음은 Rule Engine(Phase 3)입니다.
 
 우선순위는 다음과 같습니다.
 
@@ -56,6 +56,37 @@ git clone https://github.com/kmin-k/DripDraw_Hongik.git
 cd DripDraw_Hongik
 git switch dev
 git switch -c feature/<작업명>
+```
+
+## 실행
+
+버전은 [협업 가이드](CONTRIBUTING.md)의 "개발 환경"을 따릅니다 (Node 24 / Python 3.13).
+
+**백엔드** — http://localhost:8000/docs 에서 Swagger 확인
+
+```bash
+cd backend
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements-dev.txt
+uvicorn app.main:app --reload
+```
+
+**프론트엔드** — http://localhost:5173
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+`/api`와 `/health` 요청은 Vite가 8000번으로 프록시하므로 두 서버를 함께 띄우면 됩니다.
+
+**검증**
+
+```bash
+cd backend && pytest && ruff check .
+cd frontend && npm test && npm run lint
 ```
 
 ## 문서

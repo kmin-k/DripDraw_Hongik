@@ -69,11 +69,10 @@ docs: document BLE packet offsets
 
 | 항목 | 버전 | 고정 방법 |
 |---|---|---|
-| Node.js | **22 LTS** | `.nvmrc` |
-| Python | **3.12** | `backend/.python-version` |
+| Node.js | **24 LTS** | `.nvmrc` |
+| Python | **3.13** | `backend/.python-version` |
 
-Node 24 LTS도 동작하지만 올리려면 **팀 전원이 동시에** 바꿉니다.
-Python 3.13은 `opencv-contrib-python` 휠 제공이 늦을 수 있어 3.12로 고정합니다.
+버전을 올리려면 **팀 전원이 동시에** 바꿉니다.
 
 ### 패키지 매니저
 

@@ -44,12 +44,15 @@
 - [x] 협업 가이드 · 아키텍처 · BLE 프로토콜 · Rule Table 문서화
 - [x] [ERD](erd.md) · [API 명세](api.md) 초안
 - [ ] 데모 시나리오 확정 (아래 참고) — 이후 모든 작업의 완료 기준이 됨
-- [ ] `frontend/` 스캐폴딩 — Vite + React + TS, Tailwind, Recharts, Zustand, react-router-dom
-- [ ] `backend/` 스캐폴딩 — FastAPI + SQLAlchemy, `/health`, CORS
-- [ ] SQLAlchemy 모델 — [ERD](erd.md) 그대로 구현
-- [ ] GitHub `main` 브랜치 보호 설정
+- [x] `frontend/` 스캐폴딩 — Vite + React + TS, Tailwind, Recharts, react-router-dom
+- [x] `backend/` 스캐폴딩 — FastAPI + SQLAlchemy, `/health`, `/api/beans`, CORS
+- [x] SQLAlchemy 모델 — [ERD](erd.md) 그대로 구현
+- [x] GitHub `main` 브랜치 보호 설정
+- [x] [패킷 덤프 도구](../tools/hex-dump.html) — 저울 도착 전 준비 완료
 
-**완료 기준**: 프론트 `npm run dev`에서 라우팅 동작 + 백엔드 `uvicorn` 실행 시 `/docs` Swagger 노출
+**완료 기준**: 프론트 `npm run dev`에서 라우팅 동작 + 백엔드 `uvicorn` 실행 시 `/docs` Swagger 노출 — **충족**
+
+상태 관리는 Zustand 대신 `useState`로 시작합니다. 화면이 3개뿐이라 공유 상태가 거의 없고, 필요해지면 그때 도입합니다.
 
 ## Phase 1 — 저울 연동 ★최대 리스크
 

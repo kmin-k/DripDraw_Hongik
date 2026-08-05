@@ -1,0 +1,10 @@
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+# E,F 기본 + import 정렬(I) + 미사용 인자(ARG) + 파이썬 업그레이드(UP)
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
