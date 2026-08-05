@@ -7,9 +7,9 @@
   과거 추출을 그대로 재현할 수 있어야 하기 때문입니다.
 """
 
-from datetime import date, datetime
+from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, func
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -25,7 +25,6 @@ class Bean(Base):
     region: Mapped[str] = mapped_column(String(20))
     process: Mapped[str] = mapped_column(String(10))  # WASHED|NATURAL
     roast_level: Mapped[str] = mapped_column(String(10))  # LIGHT|MEDIUM|DARK
-    roasted_at: Mapped[date | None] = mapped_column(Date, default=None)
     memo: Mapped[str | None] = mapped_column(String(300), default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
@@ -36,7 +35,8 @@ class Recipe(Base):
     __tablename__ = "recipes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    bean_id: Mapped[int] = mapped_column(ForeignKey("beans.id"))
+    # 원두를 등록하지 않고 즉석 계산하는 경우가 있어 nullable입니다 (api.md, 데모 편의).
+    bean_id: Mapped[int | None] = mapped_column(ForeignKey("beans.id"), default=None)
     # 보정 레시피는 원본을 덮어쓰지 않고 새 행으로 쌓아 부모를 가리킵니다.
     parent_recipe_id: Mapped[int | None] = mapped_column(ForeignKey("recipes.id"), default=None)
     source: Mapped[str] = mapped_column(String(20), default="RULE_ENGINE")  # RULE_ENGINE|ADJUSTED
@@ -60,7 +60,7 @@ class Recipe(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
-    bean: Mapped["Bean"] = relationship(back_populates="recipes")
+    bean: Mapped["Bean | None"] = relationship(back_populates="recipes")
     brews: Mapped[list["Brew"]] = relationship(back_populates="recipe")
 
 
@@ -76,9 +76,8 @@ class Brew(Base):
     # RMSE 정의는 docs/api.md "POST /api/brews". 프론트 값을 믿지 않고 서버에서 재계산합니다.
     rmse: Mapped[float] = mapped_column(Float)
     actual_curve: Mapped[list] = mapped_column(JSON)  # [[time, weight], ...]
-    # 저울 없이 만든 기록과 실측을 구분해야 데모 데이터가 섞이지 않습니다.
-    is_simulated: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    # created_at은 두지 않습니다. started_at과 사실상 같은 값이라 정보가 겹칩니다.
+    # is_simulated도 없습니다. 시뮬레이션 모드를 만들지 않기로 해서 모든 기록이 실측입니다.
 
     recipe: Mapped["Recipe"] = relationship(back_populates="brews")
     feedback: Mapped["Feedback | None"] = relationship(back_populates="brew")

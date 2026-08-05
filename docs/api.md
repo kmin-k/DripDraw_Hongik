@@ -18,10 +18,12 @@ FastAPI가 `/docs`에 Swagger를 자동 생성하므로, **이 문서는 계약 
 
 | 상태 | 사용 |
 |---|---|
-| 400 | 입력값 범위 위반 (예: 원두량 상한 초과) |
+| 400 | **규칙 위반** — 스키마로는 표현할 수 없는 계산 결과 위반 (예: Ratio가 올라 주수 간 대기가 음수) |
 | 404 | 참조한 리소스 없음 |
-| 422 | 스키마 불일치 (FastAPI 자동) |
+| 422 | **스키마·범위 위반** (Pydantic 자동) — 원두량 10~30 밖, ENUM 오타 등 |
 | 500 | 그 외 |
+
+400과 422의 경계는 **"필드 하나만 보고 판단할 수 있는가"**입니다. 원두량 상한처럼 필드 제약으로 표현되는 것은 Pydantic이 422로 먼저 거르고, 여러 값을 조합해 계산해야 드러나는 위반만 라우터가 400으로 냅니다.
 
 ---
 
@@ -59,7 +61,6 @@ FastAPI가 `/docs`에 Swagger를 자동 생성하므로, **이 문서는 계약 
   "region": "AFRICA",
   "process": "WASHED",
   "roastLevel": "LIGHT",
-  "roastedAt": "2026-07-25",
   "memo": "자몽, 홍차"
 }
 ```
@@ -124,10 +125,18 @@ FastAPI가 `/docs`에 Swagger를 자동 생성하므로, **이 문서는 계약 
 | `d50Um` | 실수 (μm) |
 | `drinkType` | `HOT` \| `ICE` |
 
-**400 응답 예시** — 원두량 상한 초과
+`beanId`를 보내면 `region`·`process`·`roastLevel`은 생략합니다. 둘 다 없으면 `422`입니다.
+
+**422 응답** — 원두량이 범위 밖 (Pydantic이 필드 단위로 거름)
 
 ```json
-{ "detail": "doseG must be between 10 and 30 (got 40)" }
+{ "detail": [{ "loc": ["body", "doseG"], "msg": "Input should be less than or equal to 30" }] }
+```
+
+**400 응답** — 계산 결과가 규칙을 위반 (Phase 4에서 Ratio 보정 시 발생)
+
+```json
+{ "detail": "주수 간 대기가 음수입니다 (-10.0초). 현재 원두량 30 g에서는 물을 더 늘릴 수 없습니다." }
 ```
 
 ---
@@ -165,7 +174,6 @@ Target이 구간 선형이므로 보간이 근사가 아니라 **정확**하고,
   "recipeId": 12,
   "startedAt": "2026-07-31T09:12:03Z",
   "endedAt": "2026-07-31T09:15:31Z",
-  "isSimulated": false,
   "actualCurve": [[0,0],[0.1,1.2],[0.2,3.4]]
 }
 ```

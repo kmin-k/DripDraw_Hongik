@@ -4,7 +4,6 @@ PAYLOAD = {
     "region": "AFRICA",
     "process": "WASHED",
     "roastLevel": "LIGHT",
-    "roastedAt": "2026-07-25",
     "memo": "자몽, 홍차",
 }
 
