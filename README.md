@@ -89,6 +89,10 @@ cd backend && pytest && ruff check .
 cd frontend && npm test && npm run lint
 ```
 
+> ⚠️ **모델(`app/models.py`)을 바꾸면 `backend/dripdraw.db`를 지우고 다시 실행하세요.**
+> 마이그레이션 도구가 없어 `create_all()`이 기존 테이블을 변경하지 않습니다. 테스트는 매번 새 DB를 쓰므로
+> **테스트는 통과하는데 서버만 500이 나는** 형태로 드러납니다. 개발용 DB라 지워도 됩니다.
+
 ## 문서
 
 - [협업 가이드](CONTRIBUTING.md) — 브랜치, 커밋, PR

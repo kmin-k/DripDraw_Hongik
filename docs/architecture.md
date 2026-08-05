@@ -45,33 +45,34 @@ React ──HTTP/REST──> FastAPI ──> SQLite
 
 엔드포인트 목록과 요청·응답 스키마는 [`api.md`](api.md)가 기준입니다. 구현 후에는 FastAPI가 생성하는 OpenAPI(`/docs`)를 함께 참조합니다.
 
-## 권장 모노레포 구조
+## 디렉터리 구조
 
 ```text
-frontend/
-  src/
-    ble/
-    components/
-    lib/
-    pages/
-    store/
-    styles/
 backend/
   app/
-    routers/
-    services/
-docs/
+    main.py          진입점 — CORS, 라우터 등록, /health
+    config.py        설정 (DB 경로, CORS origin)
+    database.py      엔진·세션·Base
+    models.py        테이블 정의 → erd.md
+    schemas.py       요청·응답 형식과 검증 → api.md
+    routers/         엔드포인트
+    services/        ★ 알고리즘 (rule_engine.py, constants.py)
+  tests/             pytest
+frontend/
+  src/
+    ble/             저울 연결과 패킷 파싱 → scale-protocol.md
+    lib/             API 호출 래퍼
+    pages/           화면 (데모 시나리오에 등장하는 것만)
+    App.tsx          라우팅
+docs/                설계 문서
+tools/               개발용 진단 도구 (제품 코드 아님)
 ```
 
-빈 디렉터리를 미리 만들기보다 각 스캐폴딩 도구가 생성한 구조를 기준으로 확장합니다.
+빈 디렉터리를 미리 만들지 않습니다. 상태 관리 라이브러리와 공용 컴포넌트 디렉터리는 필요해지는 시점에 추가합니다.
 
 ## 범위와 우선순위
 
-- P1: 저울 연동, 실시간 화면, RMSE
-- P2: Rule Engine과 Target Curve
-- P3: Feedback Loop
-- P4: 서비스 화면
-- P5: Vision
+우선순위와 Phase별 완료 기준은 [`roadmap.md`](roadmap.md)가 기준입니다.
 
 Vision은 ArUco 마커와 contour 기반의 상대 가이드까지만 구현합니다. CNN 학습이나 절대 입자 크기 검증은 현재 범위에서 제외합니다.
 
