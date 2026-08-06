@@ -57,12 +57,13 @@
 
 상태 관리는 Zustand 대신 `useState`로 시작합니다. 화면이 3개뿐이라 공유 상태가 거의 없고, 필요해지면 그때 도입합니다.
 
-## Phase 1 — 저울 연동 ★최대 리스크
+## Phase 1 — 저울 연동
 
-- [ ] `frontend/src/ble/felicita.ts` — 연결, notify 구독, `parseWeight()`, `tare/start/stop`, 자동 재연결
+- [x] raw 패킷 hex 캡처 → [`scale-protocol.md`](scale-protocol.md) 실측 기준으로 갱신
+- [x] `parseWeight()` — 실측 패킷을 fixture로 한 회귀 테스트 9개
+- [ ] `frontend/src/ble/felicita.ts` — 연결, notify 구독, `tare/start/stop`, 자동 재연결
 - [ ] 최소 테스트 UI (연결 버튼 + 무게 숫자)
-- [ ] **실측 검증**: 100 g 기준물 → 화면 100.0
-- [ ] raw 패킷 hex 로그 캡처 → [`scale-protocol.md`](scale-protocol.md) 갱신
+- [ ] 0 g·음수 무게 패킷 확인, 명령 5종 write 검증 (체크리스트 잔여)
 
 **완료 기준**: 물을 부으면 화면 숫자가 실시간으로 따라 올라감
 
@@ -118,7 +119,7 @@
 
 | 리스크 | 대응 |
 |---|---|
-| Arc 패킷 오프셋이 문서와 다름 | Phase 1에서 hex 덤프로 조기 검증 |
+| ~~Arc 패킷 오프셋이 문서와 다름~~ | **해소됨 (2026-08-06)** — hex 덤프로 검증. 단위만 0.01 g으로 정정 |
 | BLE 연결 끊김 | 자동 재연결. 시연 중 복구 실패 시 녹화 영상으로 전환 |
 | iOS는 Web Bluetooth 미지원 | 노트북 Chrome 시연으로 고정 |
 | Vision에 시간 과소모 | P5 고정, 설계 문서 대체 허용 |

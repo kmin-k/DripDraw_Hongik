@@ -47,7 +47,9 @@
   .b-ok { background: #14331f; color: var(--ok); }
   .b-warn { background: #3a2c12; color: var(--warn); }
   .b-err { background: #3a1a1a; color: var(--err); }
-  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  /* fixed 레이아웃이라야 행을 넣을 때 전체 열 너비를 다시 계산하지 않습니다. */
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; table-layout: fixed; }
+  td { overflow: hidden; text-overflow: ellipsis; }
   th, td {
     text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line);
     font-family: "Cascadia Mono", Consolas, monospace; white-space: nowrap;
@@ -113,8 +115,23 @@
 </div>
 
 <div class="panel">
-  <h2>4. 문서 기준 파싱 결과</h2>
+  <h2>3-1. GATT 탐색 결과</h2>
+  <pre id="gatt" class="mono" style="margin:0;white-space:pre-wrap;color:var(--dim)">아직 탐색하지 않았습니다. 위 "GATT 전체 탐색"을 누르세요.</pre>
+  <div class="hint">
+    무게 패킷과 섞이지 않도록 여기에 따로 남깁니다. 문서 기대값과 다르면 그 자체가 결과입니다.
+  </div>
+</div>
+
+<div class="panel">
+  <h2>4. 파싱 결과</h2>
   <div class="weight" id="weight">—</div>
+  <div class="hint" style="margin-top:8px">
+    부호 index <input id="signIdx" type="number" value="2" min="0" max="30" style="width:52px">
+    · 숫자 index <input id="digitFrom" type="number" value="3" min="0" max="30" style="width:52px">
+    ~ <input id="digitTo" type="number" value="8" min="0" max="30" style="width:52px">
+    · 나눗수 <select id="divisor"><option>1</option><option>10</option><option selected>100</option><option>1000</option></select>
+    <button id="btnReparse" style="margin-left:8px">다시 계산</button>
+  </div>
   <div id="parseNote" class="hint"></div>
 </div>
 
@@ -130,18 +147,34 @@
 
 <div class="panel">
   <h2>6. 바이트별 변화 분석 ★핵심</h2>
+
+  <p class="hint" style="margin-top:0">
+    <b>아래 네모 칸들이 "바이트맵"입니다.</b> 패킷의 각 자리를 하나씩 보여줍니다.
+    <b>파란 칸 = 값이 변한 자리</b>(= 무게가 들어있는 곳), 회색 칸 = 늘 같은 값.
+  </p>
   <div class="bytemap" id="bytemap"></div>
-  <div class="hint">
-    저울에 물을 조금씩 올리면서 보세요. <b>파란색(변함)으로 바뀌는 인덱스가 무게를 담은 자리</b>입니다.
-    문서 가정은 <b>index 2 = 부호, index 3~8 = 숫자 6자리</b>입니다. 파란 칸이 여기와 다르면 문서가 틀린 것이고,
-    그 결과를 <code>docs/scale-protocol.md</code>에 반영해야 합니다.
+
+  <div style="margin-top:14px">
+    <button id="btnCopyPacket" class="primary">현재 패킷 복사</button>
+    <span class="hint">↓ 이 내용을 그대로 붙여넣어 공유하면 오프셋을 확정할 수 있습니다.</span>
   </div>
+  <textarea id="packetText" readonly class="mono"
+    style="width:100%;height:150px;margin-top:8px;background:#0e1117;color:var(--text);
+           border:1px solid var(--line);border-radius:6px;padding:8px;font-size:12px"></textarea>
 </div>
 
 <div class="panel">
   <h2>7. 로그</h2>
-  <button id="btnDownload">로그 저장 (.txt)</button>
+  <button id="btnPause">일시정지</button>
+  <button id="btnDownload" class="primary">로그 저장 (.txt)</button>
   <button id="btnClear">비우기</button>
+  <label class="hint" style="margin-left:10px">
+    <input type="checkbox" id="showLog"> 화면에 표시
+  </label>
+  <div class="hint">
+    <b>표시를 꺼도 모든 패킷이 기록됩니다.</b> 저장 파일에는 전부 들어갑니다.
+    표를 실시간으로 그리는 것이 이 페이지에서 가장 무거운 작업이라 기본은 꺼둡니다.
+  </div>
   <div class="scroll">
     <table>
       <thead><tr><th>#</th><th>t(ms)</th><th>Δ</th><th>len</th><th>hex</th><th>ascii</th><th>파싱</th></tr></thead>
@@ -155,30 +188,53 @@
 
 const SERVICE_UUID = "0000ffe0-0000-1000-8000-00805f9b34fb";
 const CHAR_UUID    = "0000ffe1-0000-1000-8000-00805f9b34fb";
-const MAX_ROWS = 400;   // DOM 폭주 방지. 전체 기록은 records[]에 남습니다.
+const MAX_ROWS = 50;       // 화면에 남길 행 수. 저장용 전체 기록은 records[]에 그대로 있습니다.
+const RENDER_MS = 200;     // 화면 갱신 주기. 수신은 100ms지만 매번 그리면 렉이 생깁니다.
+const MAX_RECORDS = 30000; // 메모리 상한 (약 50분). 넘으면 오래된 것부터 버립니다.
 
 let device = null, characteristic = null;
 let records = [];        // {n, t, dt, bytes:[], hex, ascii, parsed}
-let byteStats = [];      // index별 {values:Set, first}
-let t0 = 0, lastT = 0, simTimer = null, prevBytes = null;
+let byteStats = [];      // index별 {values:Set, first, last}
+let t0 = 0, lastT = 0, simTimer = null, prevBytes = null, paused = false;
+let pendingRows = [];      // 화면에 아직 안 그린 패킷
+let renderTimer = null;
+let lengthSet = new Set(); // 패킷 길이 종류. 매번 전체를 훑지 않고 누적합니다.
+let packetCount = 0;
 
 const $ = (id) => document.getElementById(id);
 
-/* ---------- 문서(scale-protocol.md) 기준 파서 ---------- */
-/* 정식 구현으로 옮길 때는 이 로직을 그대로 TypeScript로 포팅합니다. */
+/* ---------- 파서 ---------- */
+/* 오프셋과 나눗수를 화면에서 바꿀 수 있게 했습니다.
+   실물이 문서와 다를 때 코드를 고치지 않고 바로 시험해 보기 위해서입니다.
+   확정되면 이 값을 scale-protocol.md와 parseWeight.ts에 반영합니다. */
+function layout() {
+  return {
+    signIdx: Number($("signIdx").value),
+    from: Number($("digitFrom").value),
+    to: Number($("digitTo").value),
+    divisor: Number($("divisor").value),
+  };
+}
+
 function parseWeight(bytes) {
-  if (bytes.length < 9) return { ok: false, reason: `길이 ${bytes.length} < 9` };
-  const sign = bytes[2];
+  const { signIdx, from, to, divisor } = layout();
+  if (bytes.length <= Math.max(signIdx, to)) {
+    return { ok: false, reason: `길이 ${bytes.length}가 지정한 index보다 짧음` };
+  }
+  const sign = bytes[signIdx];
   if (sign !== 0x2b && sign !== 0x2d) {
-    return { ok: false, reason: `index2=0x${sign.toString(16)} (부호 0x2B/0x2D 아님)` };
+    return { ok: false, reason: `index${signIdx}=0x${sign.toString(16)} (부호 0x2B/0x2D 아님)` };
   }
   let digits = "";
-  for (let i = 3; i <= 8; i++) {
+  for (let i = from; i <= to; i++) {
     const b = bytes[i];
     if (b < 0x30 || b > 0x39) return { ok: false, reason: `index${i}=0x${b.toString(16)} (숫자 아님)` };
     digits += String.fromCharCode(b);
   }
-  return { ok: true, value: (sign === 0x2b ? 1 : -1) * parseInt(digits, 10) / 10 };
+  return {
+    ok: true, digits,
+    value: (sign === 0x2b ? 1 : -1) * parseInt(digits, 10) / divisor,
+  };
 }
 
 const toHex = (bytes) => Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join(" ");
@@ -255,23 +311,26 @@ async function disconnect() {
 /* ---------- GATT 전체 탐색 (체크리스트 2번) ---------- */
 async function exploreGatt() {
   if (!device || !device.gatt.connected) return;
-  log(`=== GATT 탐색: ${device.name || "(이름 없음)"} / id=${device.id} ===`);
+  const out = [`기기: ${device.name || "(이름 없음)"}  id=${device.id}`, ""];
   try {
     const services = await device.gatt.getPrimaryServices();
     for (const svc of services) {
-      log(`  service ${svc.uuid}`);
+      out.push(`service ${svc.uuid}`);
       const chars = await svc.getCharacteristics();
       for (const c of chars) {
         const p = c.properties;
         const flags = ["read", "write", "writeWithoutResponse", "notify", "indicate"]
           .filter(k => p[k]).join(",");
-        log(`    char  ${c.uuid}  [${flags}]`);
+        out.push(`   char ${c.uuid}  [${flags}]`);
       }
     }
-    log(`=== 탐색 끝. 문서 기대값: service ${SERVICE_UUID} / char ${CHAR_UUID} ===`);
+    out.push("", `문서 기대값: service ${SERVICE_UUID}`);
+    out.push(`             char    ${CHAR_UUID}`);
   } catch (err) {
-    log(`  탐색 실패: ${err.message}`);
+    out.push(`탐색 실패: ${err.message}`);
   }
+  // 무게 패킷이 초당 10개씩 쌓여 로그를 밀어내므로 전용 패널에 따로 남깁니다.
+  $("gatt").textContent = out.join("\n");
 }
 
 /* ---------- 명령 전송 ---------- */
@@ -292,74 +351,133 @@ async function sendCommand(code) {
 }
 
 /* ---------- 패킷 처리 ---------- */
+/* 수신은 초당 10회지만 화면 갱신은 RENDER_MS 간격으로 묶습니다.
+   패킷마다 DOM을 건드리면 시간이 갈수록 느려집니다. */
 function onPacket(bytes) {
   const now = performance.now();
-  if (records.length === 0) { t0 = now; lastT = now; }
+  if (packetCount === 0) { t0 = now; lastT = now; }
   const t = now - t0, dt = now - lastT;
   lastT = now;
+  packetCount += 1;
 
   const parsed = parseWeight(bytes);
   const rec = {
-    n: records.length + 1, t, dt,
+    n: packetCount, t, dt,
     bytes: Array.from(bytes),
     hex: toHex(bytes), ascii: toAscii(bytes), parsed
   };
-  records.push(rec);
 
-  updateByteStats(bytes);
-  updateWeight(parsed, bytes.length);
+  records.push(rec);
+  if (records.length > MAX_RECORDS) records.shift();
+
+  lengthSet.add(bytes.length);
+  updateByteStats(bytes);          // 데이터만 갱신. 그리기는 아래에서 한 번에.
+  if (!paused) pendingRows.push(rec);
+  scheduleRender();
+}
+
+function scheduleRender() {
+  if (renderTimer) return;
+  renderTimer = setTimeout(() => {
+    renderTimer = null;
+    flushRender();
+  }, RENDER_MS);
+}
+
+function flushRender() {
+  const last = records[records.length - 1];
+  if (!last || !last.bytes) return;
+
+  updateWeight(last.parsed, last.bytes.length);
+  renderByteMap();
+  renderPacketText(last);
   updateStats();
-  appendRow(rec);
-  prevBytes = rec.bytes;
+
+  // 표를 실시간으로 그리는 것이 가장 비쌉니다(행마다 브라우저가 표 전체를 다시 배치).
+  // 기록은 records[]에 이미 다 들어갔으므로, 화면 표시는 켜져 있을 때만 합니다.
+  if (!$("showLog").checked) { pendingRows = []; return; }
+
+  if (pendingRows.length) {
+    const rows = pendingRows;
+    pendingRows = [];
+    const tb = $("log");
+    // 한 번에 붙여야 리플로우가 한 번만 일어납니다.
+    const frag = document.createDocumentFragment();
+    for (let i = rows.length - 1; i >= 0; i--) frag.appendChild(buildRow(rows[i]));
+    tb.prepend(frag);
+    while (tb.children.length > MAX_ROWS) tb.removeChild(tb.lastChild);
+  }
 }
 
 function updateByteStats(bytes) {
   for (let i = 0; i < bytes.length; i++) {
     if (!byteStats[i]) byteStats[i] = { values: new Set(), first: bytes[i] };
     byteStats[i].values.add(bytes[i]);
+    byteStats[i].last = bytes[i];   // 지금 값도 같이 보여줘야 자리를 읽을 수 있습니다
   }
-  renderByteMap();
 }
 
 function renderByteMap() {
   $("bytemap").innerHTML = byteStats.map((s, i) => {
     const vary = s.values.size > 1;
-    const label = vary
-      ? `${s.values.size}종`
-      : `0x${s.first.toString(16).padStart(2, "0")}`;
+    const hex = (s.last ?? s.first).toString(16).padStart(2, "0");
+    const ch = (s.last >= 0x20 && s.last <= 0x7e) ? String.fromCharCode(s.last) : "·";
+    const note = vary ? `${s.values.size}종` : "고정";
     return `<div class="byte ${vary ? "vary" : "fixed"}">
-      <div class="i">[${i}]</div><div>${label}</div>
+      <div class="i">[${i}]</div>
+      <div style="font-size:14px">${ch}</div>
+      <div>0x${hex}</div>
+      <div class="i">${note}</div>
     </div>`;
   }).join("");
+}
+
+/* 사람이 읽고 그대로 복사해 공유할 수 있는 형태로 현재 패킷을 풀어 씁니다. */
+function renderPacketText(rec) {
+  if (paused) return;
+  const lines = [
+    `길이 ${rec.bytes.length} byte · 패킷 #${rec.n} · 파싱 ${rec.parsed.ok ? rec.parsed.value.toFixed(1) + " g" : "실패"}`,
+    `hex   ${rec.hex}`,
+    `ascii ${rec.ascii}`,
+    "",
+    "idx  hex  문자  상태",
+  ];
+  rec.bytes.forEach((b, i) => {
+    const s = byteStats[i];
+    const ch = (b >= 0x20 && b <= 0x7e) ? String.fromCharCode(b) : "·";
+    const state = s && s.values.size > 1 ? `변함(${s.values.size}종)` : "고정";
+    lines.push(`${String(i).padStart(2)}   ${b.toString(16).padStart(2, "0")}   ${ch}    ${state}`);
+  });
+  $("packetText").value = lines.join("\n");
 }
 
 function updateWeight(parsed, len) {
   if (parsed.ok) {
     $("weight").textContent = parsed.value.toFixed(1) + " g";
-    $("parseNote").innerHTML = len === 18
-      ? `<span class="badge b-ok">문서 가정과 일치 (18 byte)</span>`
-      : `<span class="badge b-warn">파싱은 됐지만 길이가 ${len} byte — 문서는 18</span>`;
+    $("parseNote").innerHTML =
+      `<span class="badge b-ok">읽은 숫자 "${parsed.digits}"</span>
+       <span class="badge ${len === 18 ? "b-ok" : "b-warn"}">${len} byte</span>
+       저울 표시값과 다르면 위 <b>나눗수</b>나 <b>index</b>를 바꿔 보세요.`;
   } else {
     $("weight").textContent = "파싱 실패";
     $("parseNote").innerHTML =
       `<span class="badge b-err">${parsed.reason}</span>
-       문서의 오프셋 가정이 실물과 다릅니다. 위 <b>바이트별 변화 분석</b>에서 실제 자리를 찾으세요.`;
+       아래 <b>바이트별 변화 분석</b>에서 실제 자리를 찾아 위 index를 고치세요.`;
   }
 }
 
 function updateStats() {
-  $("stCount").textContent = records.length;
-  const lens = new Set(records.map(r => r.bytes.length));
-  $("stLen").textContent = [...lens].join("/");
-  if (records.length > 1) {
-    const span = records[records.length - 1].t - records[0].t;
-    $("stHz").textContent = (1000 * (records.length - 1) / span).toFixed(1) + " Hz";
-    $("stGap").textContent = records[records.length - 1].dt.toFixed(0) + " ms";
+  // 누적값만 씁니다. 예전에는 패킷마다 records 전체를 훑어서 시간이 갈수록 느려졌습니다.
+  $("stCount").textContent = packetCount;
+  $("stLen").textContent = [...lengthSet].join("/");
+  const last = records[records.length - 1];
+  if (packetCount > 1 && last) {
+    $("stHz").textContent = (1000 * (packetCount - 1) / last.t).toFixed(1) + " Hz";
+    $("stGap").textContent = last.dt.toFixed(0) + " ms";
   }
 }
 
-function appendRow(rec) {
-  const tb = $("log");
+function buildRow(rec) {
   const tr = document.createElement("tr");
   // 직전 패킷과 달라진 바이트를 강조 → 어느 자리가 움직이는지 눈으로 보임
   let hexHtml = rec.hex;
@@ -369,11 +487,11 @@ function appendRow(rec) {
       return b !== prevBytes[i] ? `<span style="color:var(--accent)">${h}</span>` : h;
     }).join(" ");
   }
+  prevBytes = rec.bytes;
   const p = rec.parsed.ok ? rec.parsed.value.toFixed(1) : "—";
   tr.innerHTML = `<td>${rec.n}</td><td>${rec.t.toFixed(0)}</td><td>${rec.dt.toFixed(0)}</td>
     <td>${rec.bytes.length}</td><td>${hexHtml}</td><td>${rec.ascii}</td><td>${p}</td>`;
-  tb.prepend(tr);
-  while (tb.children.length > MAX_ROWS) tb.removeChild(tb.lastChild);
+  return tr;
 }
 
 function log(text) {
@@ -386,8 +504,11 @@ function log(text) {
 
 function resetCapture() {
   records = []; byteStats = []; prevBytes = null;
+  pendingRows = []; lengthSet = new Set(); packetCount = 0;
+  if (renderTimer) { clearTimeout(renderTimer); renderTimer = null; }
   $("log").innerHTML = ""; $("bytemap").innerHTML = "";
   $("weight").textContent = "—"; $("parseNote").textContent = "";
+  $("packetText").value = "";
   ["stCount", "stLen", "stHz", "stGap"].forEach(id => $(id).textContent = id === "stCount" ? "0" : "—");
 }
 
@@ -455,6 +576,30 @@ $("btnDisconnect").onclick = disconnect;
 $("btnExplore").onclick = exploreGatt;
 $("btnDownload").onclick = download;
 $("btnClear").onclick = resetCapture;
+$("btnPause").onclick = () => {
+  paused = !paused;
+  $("btnPause").textContent = paused ? "재개" : "일시정지";
+};
+$("showLog").onchange = () => {
+  if (!$("showLog").checked) $("log").innerHTML = "";   // 꺼두면 표를 비워 배치 비용을 없앱니다
+};
+$("btnCopyPacket").onclick = async () => {
+  const el = $("packetText");
+  el.select();
+  try {
+    await navigator.clipboard.writeText(el.value);
+    $("btnCopyPacket").textContent = "복사됨";
+  } catch {
+    document.execCommand("copy");   // 클립보드 권한이 없을 때 대비
+    $("btnCopyPacket").textContent = "복사됨";
+  }
+  setTimeout(() => ($("btnCopyPacket").textContent = "현재 패킷 복사"), 1500);
+};
+// 오프셋·나눗수를 바꾸면 마지막 패킷을 그 설정으로 다시 계산해 보여줍니다.
+$("btnReparse").onclick = () => {
+  const last = [...records].reverse().find(r => r.bytes);
+  if (last) updateWeight(parseWeight(last.bytes), last.bytes.length);
+};
 $("btnSim").onclick = () => simTimer ? stopSim() : startSim();
 document.querySelectorAll("button.cmd").forEach(b => {
   b.onclick = () => sendCommand(Number(b.dataset.code));
