@@ -61,8 +61,9 @@
 
 - [x] raw 패킷 hex 캡처 → [`scale-protocol.md`](scale-protocol.md) 실측 기준으로 갱신
 - [x] `parseWeight()` — 실측 패킷을 fixture로 한 회귀 테스트 9개
-- [ ] `frontend/src/ble/felicita.ts` — 연결, notify 구독, `tare/start/stop`, 자동 재연결
-- [ ] 최소 테스트 UI (연결 버튼 + 무게 숫자)
+- [x] `frontend/src/ble/felicita.ts` — 연결, notify 구독, `tare/start/stop`, 자동 재연결
+- [x] 최소 테스트 UI (연결 버튼 + 무게 숫자 + 연결 상태)
+- [ ] **실물 확인**: 물을 부으면 숫자가 따라 올라가는지, 저울 전원을 껐다 켜면 자동 재연결되는지
 - [ ] 0 g·음수 무게 패킷 확인, 명령 5종 write 검증 (체크리스트 잔여)
 
 **완료 기준**: 물을 부으면 화면 숫자가 실시간으로 따라 올라감
