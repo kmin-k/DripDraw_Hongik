@@ -27,31 +27,31 @@ erDiagram
         int id PK
         int bean_id FK "NULL 허용 — 원두 등록 없이 즉석 계산"
         int parent_recipe_id FK "보정 이전 레시피"
-        string source "RULE_ENGINE|ADJUSTED"
+        string source "RULE_ENGINE|ADJUSTED|RECORDED"
         int dose_g "원두량"
         string drink_type "HOT|ICE"
-        float ratio "1:N 의 N"
-        float d50_um "분쇄 입자"
-        int water_temp_c
         float total_water_g
-        float bloom_water_g
-        int bloom_wait_sec
-        float flow_rate "g/sec"
-        int total_time_sec "목표 총 추출 시간"
+        int total_time_sec
         json target_curve "[[time,weight], ...]"
-        json pour_plan "구간별 물량·시작·종료"
-        string grind_guide "N단계 굵게/곱게"
+        float ratio "NULL — Rule Engine 전용"
+        float d50_um "NULL 허용"
+        int water_temp_c "NULL — Rule Engine 전용"
+        float bloom_water_g "NULL — Rule Engine 전용"
+        int bloom_wait_sec "NULL — Rule Engine 전용"
+        float flow_rate "NULL — Rule Engine 전용"
+        json pour_plan "NULL — Rule Engine 전용"
+        string grind_guide "NULL 허용"
         datetime created_at
     }
 
     BREW {
         int id PK
-        int recipe_id FK
+        int recipe_id FK "NULL — 자유 모드 추출"
         datetime started_at
         datetime ended_at
         int duration_sec
         float final_weight_g
-        float rmse "정확도 지표"
+        float rmse "NULL — 자유 모드는 비교 대상 없음"
         json actual_curve "[[time,weight], ...]"
     }
 
@@ -83,6 +83,18 @@ erDiagram
 - **BREW ↔ FEEDBACK 1:1** — 추출 1건당 맛 평가 1건. `brew_id`에 UNIQUE.
 - **`applied` 저장** — 사용자가 제안을 받아들였는지 여부가 나중에 개인화 모델의 학습 신호가 됩니다. 발표에서 "선택 결과를 축적하도록 설계했다"의 근거.
 - **`RECIPE.bean_id`는 NULL 허용** — 원두를 등록하지 않고 조건만 직접 넣어 계산하는 경로가 있습니다([`api.md`](api.md) `POST /api/recipe/generate`). 이 경우 가리킬 원두가 없습니다.
+
+**추출 모드가 두 가지라서 생긴 NULL**
+
+| 모드 | 하는 일 | 결과 |
+|---|---|---|
+| 가이드 | 목표 곡선을 따라 추출하고 정확도를 측정 | `recipe_id`·`rmse` 있음 |
+| 자유 | 목표 없이 내 추출만 기록 | 둘 다 `NULL` |
+
+자유 모드는 비교할 목표가 없어 정확도를 계산할 수 없습니다. `0`이 아니라 `NULL`인 이유는 **"측정하지 않음"과 "정확도 0점"이 다르기** 때문입니다.
+
+- **`RECIPE`의 필드는 두 층으로 나뉩니다.** `target_curve`·`total_water_g`·`total_time_sec`·`dose_g`는 **곡선을 재현하는 데 반드시 필요**하므로 NOT NULL입니다. 반면 `water_temp_c`·`flow_rate`·`pour_plan` 등은 Rule Engine이 규칙으로 계산한 부가 정보라, 사용자의 추출을 그대로 저장한 `RECORDED` 레시피에는 **존재하지 않습니다.**
+- **`source = RECORDED`** — 자유 모드로 내린 추출이 마음에 들었을 때 그 곡선을 목표로 저장한 레시피입니다. Rule Engine 없이도 "내가 만든 레시피를 다시 재현"할 수 있게 합니다.
 - **GRIND_ANALYSIS는 P5** — Vision을 드랍해도 나머지 스키마에 영향이 없도록 분리했습니다.
 
 **의도적으로 두지 않은 컬럼**

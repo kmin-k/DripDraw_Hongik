@@ -39,23 +39,27 @@ class Recipe(Base):
     bean_id: Mapped[int | None] = mapped_column(ForeignKey("beans.id"), default=None)
     # 보정 레시피는 원본을 덮어쓰지 않고 새 행으로 쌓아 부모를 가리킵니다.
     parent_recipe_id: Mapped[int | None] = mapped_column(ForeignKey("recipes.id"), default=None)
-    source: Mapped[str] = mapped_column(String(20), default="RULE_ENGINE")  # RULE_ENGINE|ADJUSTED
+    # RULE_ENGINE: 규칙으로 생성 / ADJUSTED: 피드백으로 보정 / RECORDED: 사용자의 추출을 목표로 저장
+    source: Mapped[str] = mapped_column(String(20), default="RULE_ENGINE")
 
     # 입력
     dose_g: Mapped[int] = mapped_column(Integer)
     drink_type: Mapped[str] = mapped_column(String(10))  # HOT|ICE
-    ratio: Mapped[float] = mapped_column(Float)
     d50_um: Mapped[float | None] = mapped_column(Float, default=None)
 
-    # Rule Engine 계산 결과
-    water_temp_c: Mapped[int] = mapped_column(Integer)
+    # 곡선을 재현하는 데 반드시 필요한 값
     total_water_g: Mapped[float] = mapped_column(Float)
-    bloom_water_g: Mapped[float] = mapped_column(Float)
-    bloom_wait_sec: Mapped[int] = mapped_column(Integer)
-    flow_rate: Mapped[float] = mapped_column(Float)
     total_time_sec: Mapped[int] = mapped_column(Integer)
     target_curve: Mapped[list] = mapped_column(JSON)  # [[time, weight], ...]
-    pour_plan: Mapped[list] = mapped_column(JSON)  # 구간별 물량·시작·종료
+
+    # Rule Engine이 계산한 부가 정보.
+    # RECORDED 레시피에는 존재하지 않습니다 — 사용자가 부은 곡선에는 이런 규칙이 없습니다.
+    ratio: Mapped[float | None] = mapped_column(Float, default=None)
+    water_temp_c: Mapped[int | None] = mapped_column(Integer, default=None)
+    bloom_water_g: Mapped[float | None] = mapped_column(Float, default=None)
+    bloom_wait_sec: Mapped[int | None] = mapped_column(Integer, default=None)
+    flow_rate: Mapped[float | None] = mapped_column(Float, default=None)
+    pour_plan: Mapped[list | None] = mapped_column(JSON, default=None)  # 구간별 물량·시작·종료
     grind_guide: Mapped[str | None] = mapped_column(String(50), default=None)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
@@ -68,18 +72,20 @@ class Brew(Base):
     __tablename__ = "brews"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id"))
+    # 자유 모드 추출은 목표 레시피 없이 측정만 합니다.
+    recipe_id: Mapped[int | None] = mapped_column(ForeignKey("recipes.id"), default=None)
     started_at: Mapped[datetime] = mapped_column(DateTime)
     ended_at: Mapped[datetime] = mapped_column(DateTime)
     duration_sec: Mapped[int] = mapped_column(Integer)
     final_weight_g: Mapped[float] = mapped_column(Float)
     # RMSE 정의는 docs/api.md "POST /api/brews". 프론트 값을 믿지 않고 서버에서 재계산합니다.
-    rmse: Mapped[float] = mapped_column(Float)
+    # 자유 모드는 비교할 목표가 없어 NULL입니다. "측정하지 않음"과 "0점"은 다릅니다.
+    rmse: Mapped[float | None] = mapped_column(Float, default=None)
     actual_curve: Mapped[list] = mapped_column(JSON)  # [[time, weight], ...]
     # created_at은 두지 않습니다. started_at과 사실상 같은 값이라 정보가 겹칩니다.
     # is_simulated도 없습니다. 시뮬레이션 모드를 만들지 않기로 해서 모든 기록이 실측입니다.
 
-    recipe: Mapped["Recipe"] = relationship(back_populates="brews")
+    recipe: Mapped["Recipe | None"] = relationship(back_populates="brews")
     feedback: Mapped["Feedback | None"] = relationship(back_populates="brew")
 
 

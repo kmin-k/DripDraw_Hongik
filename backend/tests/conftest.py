@@ -13,6 +13,21 @@ from app.main import app
 
 
 @pytest.fixture
+def db(tmp_path):
+    """모델을 직접 다루는 테스트용 세션. 라우터를 거치지 않습니다."""
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'model.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(bind=engine)
+    session = sessionmaker(bind=engine, autoflush=False, autocommit=False)()
+    try:
+        yield session
+    finally:
+        session.close()
+
+
+@pytest.fixture
 def client(tmp_path):
     engine = create_engine(
         f"sqlite:///{tmp_path / 'test.db'}",
