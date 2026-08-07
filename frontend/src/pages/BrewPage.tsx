@@ -1,16 +1,25 @@
-import { useScale } from "../ble/useScale";
+import { Link, useLocation } from "react-router-dom";
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+
 import type { ScaleStatus } from "../ble/types";
+import { useScale } from "../ble/useScale";
+import type { Recipe } from "../lib/api";
+import type { Curve } from "../lib/rmse";
+import { useBrewSession } from "../lib/useBrewSession";
 
 /**
  * 데모 시나리오 3번 — 시연 성패를 가르는 화면.
  *
- * 지금은 Phase 1 완료 기준("물을 부으면 화면 숫자가 실시간으로 따라 올라감")까지만 만듭니다.
- * Phase 2에서 여기에 들어갈 것:
- * - Recharts 이중 라인 (Target 점선 / Actual 실선)
- * - RMSE 실시간 표시, 페이스 인디케이터
- *
- * ⚠️ 곡선 데이터 적재는 setInterval이 아니라 저울의 notify 이벤트를 기준으로 합니다.
- * 백그라운드 탭에서 타이머가 1초로 throttle되기 때문입니다.
+ * 목표 곡선은 레시피 화면에서 넘겨받습니다. 새로고침하면 사라지므로 그때는 안내를 띄웁니다.
+ * 자유 모드(목표 없이 기록만)는 다음 단계에서 붙입니다.
  */
 
 const STATUS_LABEL: Record<ScaleStatus, { text: string; className: string }> = {
@@ -20,94 +29,187 @@ const STATUS_LABEL: Record<ScaleStatus, { text: string; className: string }> = {
   RECONNECTING: { text: "재연결 중…", className: "bg-amber-100 text-amber-700" },
 };
 
+const btn = "rounded border px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-40";
+const btnPrimary =
+  "rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40";
+
+function Stat({ label, value, unit }: { label: string; value: string; unit: string }) {
+  return (
+    <div className="rounded border bg-white p-4 text-center">
+      <div className="text-xs text-slate-500">{label}</div>
+      <div className="font-mono text-3xl tabular-nums">
+        {value}
+        <span className="ml-1 text-base text-slate-400">{unit}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function BrewPage() {
+  const recipe = (useLocation().state as { recipe?: Recipe } | null)?.recipe ?? null;
+  const target: Curve = recipe?.targetCurve ?? [];
+
   const scale = useScale();
+  const brew = useBrewSession(scale.source, target);
+
   const label = STATUS_LABEL[scale.status];
   const connected = scale.status === "CONNECTED";
+  const running = brew.phase === "RUNNING";
+  const paused = brew.phase === "PAUSED";
+  const finished = brew.phase === "FINISHED";
+
+  if (!recipe) {
+    return (
+      <section className="space-y-4">
+        <h1 className="text-lg font-semibold">추출</h1>
+        <div className="rounded border bg-white p-8 text-center text-sm text-slate-600">
+          따라갈 목표 곡선이 없습니다.
+          <div className="mt-3">
+            <Link to="/recipe" className={btnPrimary}>
+              레시피 만들러 가기
+            </Link>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="space-y-4">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-lg font-semibold">추출</h1>
         <span className={`rounded px-2 py-0.5 text-xs ${label.className}`}>{label.text}</span>
-        {scale.packetCount > 0 && (
-          <span className="text-xs text-slate-400">수신 {scale.packetCount}</span>
+        <span className="text-xs text-slate-500">
+          목표 {recipe.totalWaterG} g · {recipe.waterTempC} ℃
+        </span>
+        {brew.sampleCount > 0 && (
+          <span className="text-xs text-slate-400">측정 {brew.sampleCount}점</span>
         )}
       </div>
 
       {!scale.isSupported && (
         <p className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          이 브라우저는 Web Bluetooth를 지원하지 않습니다. Chrome 또는 Edge를 쓰세요. iOS는 지원하지
-          않아 노트북에서 시연합니다.
+          이 브라우저는 Web Bluetooth를 지원하지 않습니다. Chrome 또는 Edge를 쓰세요.
         </p>
       )}
 
-      <div className="rounded border bg-white p-8 text-center">
-        <div
-          className={`font-mono text-6xl tabular-nums ${
-            scale.weight === null ? "text-slate-300" : "text-slate-900"
-          }`}
-        >
-          {scale.weight === null ? "—.—" : scale.weight.toFixed(1)}
-          <span className="ml-2 text-2xl text-slate-400">g</span>
+      <div className="grid grid-cols-3 gap-3">
+        <Stat label="부은 물" value={brew.weightG.toFixed(1)} unit="g" />
+        <Stat label="경과" value={brew.elapsedSec.toFixed(0)} unit="초" />
+        <Stat
+          label="정확도 (RMSE)"
+          value={brew.rmse === null ? "—" : brew.rmse.toFixed(1)}
+          unit="g"
+        />
+      </div>
+
+      <div className="rounded border bg-white p-4">
+        <div className="mb-2 flex items-center gap-4 text-xs text-slate-600">
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-0 w-5 border-t-2 border-dashed border-slate-400" />
+            목표
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-0 w-5 border-t-2 border-emerald-600" />
+            실제
+          </span>
         </div>
+        <ResponsiveContainer width="100%" height={280}>
+          <LineChart data={brew.chartData} margin={{ top: 5, right: 10, bottom: 5, left: -20 }}>
+            <CartesianGrid stroke="#e2e8f0" />
+            <XAxis dataKey="sec" type="number" domain={[0, "dataMax"]} fontSize={12} />
+            <YAxis fontSize={12} />
+            <Tooltip
+              formatter={(value, name) => [`${Number(value).toFixed(1)} g`, name]}
+              labelFormatter={(v) => `${Number(v).toFixed(0)}초`}
+            />
+            {/* 목표는 구간 선형이므로 곡선 보간을 쓰면 실제 규칙과 다른 모양이 됩니다. */}
+            <Line
+              type="linear"
+              dataKey="target"
+              name="목표"
+              stroke="#94a3b8"
+              strokeWidth={2}
+              strokeDasharray="6 4"
+              dot={false}
+              connectNulls
+              isAnimationActive={false}
+            />
+            <Line
+              type="linear"
+              dataKey="actual"
+              name="실제"
+              stroke="#059669"
+              strokeWidth={2}
+              dot={false}
+              connectNulls
+              isAnimationActive={false}
+            />
+          </LineChart>
+        </ResponsiveContainer>
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {connected ? (
-          <button
-            onClick={scale.disconnect}
-            className="rounded border px-4 py-2 text-sm hover:bg-slate-50"
-          >
-            연결 해제
-          </button>
-        ) : (
+        {!connected ? (
           <button
             onClick={scale.connect}
             disabled={!scale.isSupported || scale.status === "CONNECTING"}
-            className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+            className={btnPrimary}
           >
             저울 연결
           </button>
+        ) : brew.phase === "IDLE" ? (
+          <button onClick={brew.start} className={btnPrimary}>
+            추출 시작
+          </button>
+        ) : running ? (
+          <>
+            <button onClick={brew.pause} className={btn}>
+              일시정지
+            </button>
+            <button onClick={brew.finish} className={btnPrimary}>
+              추출 종료
+            </button>
+          </>
+        ) : paused ? (
+          <>
+            <button onClick={brew.resume} className={btnPrimary}>
+              재개
+            </button>
+            <button onClick={brew.finish} className={btn}>
+              추출 종료
+            </button>
+          </>
+        ) : (
+          <button onClick={brew.reset} className={btn}>
+            다시 하기
+          </button>
         )}
 
-        <button
-          onClick={scale.tare}
-          disabled={!connected}
-          className="rounded border px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-40"
-        >
+        <button onClick={scale.tare} disabled={!connected || running} className={btn}>
           영점
         </button>
-        <button
-          onClick={scale.startTimer}
-          disabled={!connected}
-          className="rounded border px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-40"
-        >
-          타이머 시작
-        </button>
-        <button
-          onClick={scale.stopTimer}
-          disabled={!connected}
-          className="rounded border px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-40"
-        >
-          정지
-        </button>
-        <button
-          onClick={scale.resetTimer}
-          disabled={!connected}
-          className="rounded border px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-40"
-        >
-          타이머 리셋
-        </button>
       </div>
+
+      {connected && brew.phase === "IDLE" && (
+        <p className="text-sm text-slate-500">
+          드리퍼를 저울에 올린 뒤 <b>추출 시작</b>을 누르세요. 시작 시점의 무게를 기준으로 삼아 부은
+          물의 양만 기록합니다.
+        </p>
+      )}
+      {finished && (
+        <p className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+          추출이 끝났습니다. {brew.sampleCount}개 지점을 측정했고 정확도는{" "}
+          {brew.rmse === null ? "—" : `${brew.rmse.toFixed(1)} g`}입니다. 저장은 다음 단계에서
+          붙입니다.
+        </p>
+      )}
 
       {scale.error && (
         <p className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {scale.error}
         </p>
       )}
-
-      <p className="text-sm text-slate-500">Phase 2에서 실시간 곡선과 RMSE가 들어갑니다.</p>
     </section>
   );
 }

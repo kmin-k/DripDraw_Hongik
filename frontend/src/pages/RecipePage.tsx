@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   CartesianGrid,
   Line,
@@ -52,6 +53,7 @@ const inputClass =
   "w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-slate-900 focus:outline-none";
 
 export default function RecipePage() {
+  const navigate = useNavigate();
   const [form, setForm] = useState<RecipeRequest>(DEFAULTS);
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -234,6 +236,14 @@ export default function RecipePage() {
             <p className="mt-3 text-sm text-slate-600">분쇄도 안내 — {recipe.grindGuide}</p>
             {recipe.iceMessage && <p className="mt-1 text-sm text-sky-700">{recipe.iceMessage}</p>}
           </div>
+
+          {/* 목표 곡선을 추출 화면으로 넘깁니다. 자유 모드 버튼은 다음 단계에서 나란히 붙습니다. */}
+          <button
+            onClick={() => navigate("/brew", { state: { recipe } })}
+            className="w-full rounded bg-slate-900 px-4 py-3 text-sm font-medium text-white"
+          >
+            이 레시피로 추출하기
+          </button>
         </>
       )}
     </section>

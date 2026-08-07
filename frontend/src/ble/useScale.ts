@@ -58,6 +58,8 @@ export function useScale() {
   }, []);
 
   return {
+    /** 추출 세션이 패킷을 직접 구독하기 위해 노출합니다. state를 거치면 패킷이 유실될 수 있습니다. */
+    source,
     status,
     weight,
     packetCount,
