@@ -13,10 +13,27 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail ?? `${res.status} ${res.statusText}`);
+    throw new Error(formatError(body, res));
   }
   return res.json() as Promise<T>;
 }
+
+/** FastAPI는 규칙 위반(400)과 스키마 위반(422)의 detail 형태가 다릅니다. */
+function formatError(body: unknown, res: Response): string {
+  const detail = (body as { detail?: unknown })?.detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((e: { loc?: unknown[]; msg?: string }) => {
+        const field = Array.isArray(e.loc) ? e.loc[e.loc.length - 1] : "";
+        return `${field}: ${e.msg ?? ""}`;
+      })
+      .join(", ");
+  }
+  return `${res.status} ${res.statusText}`;
+}
+
+// --- 원두 ---
 
 export interface Bean {
   id: number;
@@ -26,7 +43,48 @@ export interface Bean {
   roastLevel: string;
 }
 
+// --- 레시피 ---
+
+export type DrinkType = "HOT" | "ICE";
+export type RoastLevel = "LIGHT" | "MEDIUM" | "DARK";
+export type Region = "AFRICA" | "CENTRAL_AMERICA" | "SOUTH_AMERICA" | "ASIA_PACIFIC";
+export type Process = "WASHED" | "NATURAL";
+
+export interface RecipeRequest {
+  doseG: number;
+  drinkType: DrinkType;
+  roastLevel: RoastLevel;
+  region: Region;
+  process: Process;
+  d50Um: number;
+}
+
+export interface Pour {
+  phase: "BLOOM" | "SECOND" | "THIRD" | "FOURTH";
+  waterG: number;
+  startSec: number;
+  endSec: number;
+}
+
+export interface Recipe {
+  recipeId: number;
+  waterTempC: number;
+  totalWaterG: number;
+  ratio: number;
+  flowRateGps: number;
+  grindGuide: string;
+  iceMessage: string | null;
+  pours: Pour[];
+  /** [[시간(초), 누적 물량(g)], ...] 구간 선형 곡선 */
+  targetCurve: [number, number][];
+}
+
 export const api = {
   health: () => request<{ status: string }>("/health"),
   listBeans: () => request<{ items: Bean[] }>("/api/beans"),
+  generateRecipe: (body: RecipeRequest) =>
+    request<Recipe>("/api/recipe/generate", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };
