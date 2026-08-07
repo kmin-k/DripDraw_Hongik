@@ -37,8 +37,8 @@ export default function BrewPage() {
 
       {!scale.isSupported && (
         <p className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          이 브라우저는 Web Bluetooth를 지원하지 않습니다. Chrome 또는 Edge를 쓰세요.
-          iOS는 지원하지 않아 노트북에서 시연합니다.
+          이 브라우저는 Web Bluetooth를 지원하지 않습니다. Chrome 또는 Edge를 쓰세요. iOS는 지원하지
+          않아 노트북에서 시연합니다.
         </p>
       )}
 

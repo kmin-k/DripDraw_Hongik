@@ -11,6 +11,10 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "test": "vitest run"
   },
+  "prettier": {
+    "printWidth": 100,
+    "trailingComma": "all"
+  },
   "dependencies": {
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
