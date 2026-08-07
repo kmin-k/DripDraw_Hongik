@@ -11,7 +11,7 @@
     "noEmit": true,
     "skipLibCheck": true,
     "isolatedModules": true,
-    "types": ["vite/client"]
+    "types": ["vite/client", "web-bluetooth"]
   },
   "include": ["src"]
 }
