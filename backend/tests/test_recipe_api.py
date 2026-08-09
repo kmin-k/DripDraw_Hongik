@@ -17,24 +17,25 @@ def test_generate_matches_api_doc_example(client):
 
     assert body["waterTempC"] == 96
     assert body["totalWaterG"] == 300
-    assert body["flowRateGps"] == 3.0
+    assert body["flowRateGps"] == 6.0
     assert body["grindGuide"] == "현재 분쇄도 유지"
     assert body["iceMessage"] is None
     assert body["targetCurve"] == [
         [0, 0],
-        [10, 60],
-        [45, 60],
-        [77, 156],
-        [117, 156],
-        [143, 235],
-        [183, 235],
-        [205, 300],
+        [10, 56],
+        [35, 56],
+        [51, 154],
+        [70, 154],
+        [84, 235],
+        [105, 235],
+        [116, 300],
+        [165, 300],  # 드립다운
     ]
     assert body["pours"] == [
-        {"phase": "BLOOM", "waterG": 60, "startSec": 0, "endSec": 10},
-        {"phase": "SECOND", "waterG": 96, "startSec": 45, "endSec": 77},
-        {"phase": "THIRD", "waterG": 79, "startSec": 117, "endSec": 143},
-        {"phase": "FOURTH", "waterG": 65, "startSec": 183, "endSec": 205},
+        {"phase": "BLOOM", "waterG": 56, "startSec": 0, "endSec": 10},
+        {"phase": "SECOND", "waterG": 98, "startSec": 35, "endSec": 51},
+        {"phase": "THIRD", "waterG": 81, "startSec": 70, "endSec": 84},
+        {"phase": "FOURTH", "waterG": 65, "startSec": 105, "endSec": 116},
     ]
 
 

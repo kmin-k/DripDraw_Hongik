@@ -72,7 +72,7 @@ pip install -r requirements-dev.txt
 uvicorn app.main:app --reload
 ```
 
-**프론트엔드** — http://localhost:5173
+**프론트엔드** — http://localhost:5180
 
 ```bash
 cd frontend

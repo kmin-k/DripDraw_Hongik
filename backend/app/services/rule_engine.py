@@ -5,6 +5,11 @@
 계산 순서 (rule-table.md 3절~6절):
     입력 검증 → 물 온도 → 총 물량 → Bloom → 유량 → 주수 배분 → 타이밍 → Target Curve
 
+**타이밍 모델** (8-8절): 주수는 로스팅별로 정해진 간격마다 시작합니다.
+대기 시간은 간격에서 푸어 시간을 뺀 나머지로 자연히 정해집니다.
+이전에는 대기를 총 시간에서 역산했는데, 그러면 유량을 올릴수록 대기가 길어져
+실제 추출과 반대로 움직였습니다.
+
 상수는 전부 constants.py에서 가져옵니다 (8-7절). 이 파일에 숫자 리터럴을 두지 마세요.
 """
 
@@ -34,7 +39,9 @@ class GeneratedRecipe:
     flow_rate_gps: float
     bloom_water_g: int
     bloom_wait_sec: int
-    between_pour_wait_sec: int
+    #: 주수를 시작하는 간격. 대기 시간은 여기서 푸어 시간을 뺀 값입니다.
+    pour_interval_sec: int
+    #: 마지막 주수 시작 + 드립다운. 물이 다 빠지는 시점입니다.
     total_time_sec: int
     grind_guide: str
     ice_message: str | None
@@ -76,7 +83,7 @@ def _water_temp(roast_level: str, region: str, process: str) -> int:
 
 
 def _flow_rate(roast_level: str, region: str, drink_type: str, d50_um: float) -> float:
-    """5절: clamp(기본값 + 지역 보정 + D50 보정, 2.5, 8.5)."""
+    """5절: clamp(기본값 + 지역 보정 + D50 보정, FLOW_MIN, FLOW_MAX)."""
     low, high = C.D50_RANGE[drink_type]
     if d50_um < low:
         d50_adj = C.D50_FLOW_ADJ_FINE
@@ -114,7 +121,7 @@ def generate_recipe(
     """입력 조건으로 Target Curve를 생성합니다.
 
     ratio_override는 Phase 4 피드백 보정용입니다. 기본 Ratio 대신 조정된 값을 넣습니다.
-    이때 대기가 음수가 될 수 있으므로 아래 검사가 반드시 필요합니다 (8-4절).
+    이때 한 번에 부을 물량이 늘어 푸어가 간격을 넘길 수 있으므로 아래 검사가 필요합니다 (8-4절).
     """
     _validate(dose_g, drink_type, roast_level, region, process)
 
@@ -131,38 +138,30 @@ def generate_recipe(
 
     # --- 유량과 타이밍 (5절, 6절) ---
     flow = _flow_rate(roast_level, region, drink_type, d50_um)
-    bloom_wait = C.BLOOM_WAIT_SEC[roast_level]
-    total_time = C.TOTAL_TIME_SEC[roast_level]
+    interval = C.POUR_INTERVAL_SEC[roast_level]
 
-    pour_seconds_total = remaining / flow
-    wait_raw = (total_time - C.BLOOM_POUR_SEC - bloom_wait - pour_seconds_total) / 2
-
-    # 8-1절: 원두량이 크거나 Ratio가 오르면 대기가 음수가 되어 시간축이 역행합니다.
-    # 입력 상한 30 g은 기본 Ratio 기준이므로, 보정된 Ratio에서는 여기서 걸립니다.
-    if wait_raw < 0:
+    # 8-1절: 한 번에 붓는 양이 많고 유량이 낮으면 푸어가 다음 주수 시작 시각을 넘겨
+    # 타임라인이 역행하고 곡선이 깨집니다. 가장 많이 붓는 2차가 기준입니다.
+    longest_pour_sec = second / flow
+    if longest_pour_sec > interval:
         raise RuleViolation(
-            f"주수 간 대기가 음수입니다 ({wait_raw:.1f}초). "
+            f"한 번에 붓는 시간({longest_pour_sec:.1f}초)이 주수 간격({interval}초)을 넘습니다. "
             f"현재 원두량 {dose_g} g에서는 물을 더 늘릴 수 없습니다."
         )
-    between_wait = _round_half_up(wait_raw)
 
-    # --- 타임라인 (6절) ---
-    # 시간은 정수 초로 반올림합니다. 7절 검증 예시가 정수 좌표이고,
-    # 205초 추출에서 0.1초 해상도는 안내에도 RMSE 보간에도 의미가 없습니다.
-    bloom_end = C.BLOOM_POUR_SEC
-    second_start = bloom_end + bloom_wait
-    second_end = second_start + second / flow
-    third_start = second_end + wait_raw
-    third_end = third_start + third / flow
-    fourth_start = third_end + wait_raw
-    fourth_end = fourth_start + fourth / flow
+    # 주수는 간격마다 시작합니다. 대기는 간격에서 푸어 시간을 뺀 나머지입니다.
+    starts = [0.0, float(interval), float(interval * 2), float(interval * 3)]
+    amounts = [bloom_water, second, third, fourth]
+    phases = ["BLOOM", "SECOND", "THIRD", "FOURTH"]
 
-    pours = [
-        Pour("BLOOM", bloom_water, 0, bloom_end),
-        Pour("SECOND", second, _round_half_up(second_start), _round_half_up(second_end)),
-        Pour("THIRD", third, _round_half_up(third_start), _round_half_up(third_end)),
-        Pour("FOURTH", fourth, _round_half_up(fourth_start), _round_half_up(fourth_end)),
-    ]
+    pours: list[Pour] = []
+    for phase, amount, start in zip(phases, amounts, starts, strict=True):
+        # Bloom은 물량과 무관하게 10초 동안 붓습니다.
+        duration = C.BLOOM_POUR_SEC if phase == "BLOOM" else amount / flow
+        pours.append(Pour(phase, amount, _round_half_up(start), _round_half_up(start + duration)))
+
+    # 마지막 주수를 시작한 뒤 물이 다 빠질 때까지가 총 추출 시간입니다.
+    total_time = _round_half_up(starts[-1] + C.DRAWDOWN_SEC)
 
     # --- Target Curve (6절) ---
     # 주수마다 (시작, 직전까지 누적) → (종료, 그 주수까지 누적) 두 점.
@@ -174,14 +173,18 @@ def generate_recipe(
         cumulative += pour.water_g
         curve.append([pour.end_sec, cumulative])
 
+    # 드립다운 구간. 물을 붓지 않으므로 수평이며, 화면에 "이제 기다리세요"가 보입니다.
+    if total_time > curve[-1][0]:
+        curve.append([total_time, cumulative])
+
     return GeneratedRecipe(
         water_temp_c=_water_temp(roast_level, region, process),
         total_water_g=total_water,
         ratio=ratio,
         flow_rate_gps=flow,
         bloom_water_g=bloom_water,
-        bloom_wait_sec=bloom_wait,
-        between_pour_wait_sec=between_wait,
+        bloom_wait_sec=interval - C.BLOOM_POUR_SEC,
+        pour_interval_sec=interval,
         total_time_sec=total_time,
         grind_guide=_grind_guide(drink_type, d50_um),
         ice_message=("얼음이 가득 담긴 컵에 부어 드세요!" if drink_type == "ICE" else None),

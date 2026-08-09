@@ -100,20 +100,23 @@ FastAPI가 `/docs`에 Swagger를 자동 생성하므로, **이 문서는 계약 
   "waterTempC": 96,
   "totalWaterG": 300,
   "ratio": 15,
-  "flowRateGps": 3.0,
+  "flowRateGps": 6.0,
   "grindGuide": "현재 분쇄도 유지",
   "iceMessage": null,
   "pours": [
-    { "phase": "BLOOM", "waterG": 60, "startSec": 0,   "endSec": 10  },
-    { "phase": "SECOND", "waterG": 96, "startSec": 45,  "endSec": 77  },
-    { "phase": "THIRD",  "waterG": 79, "startSec": 117, "endSec": 143 },
-    { "phase": "FOURTH", "waterG": 65, "startSec": 183, "endSec": 205 }
+    { "phase": "BLOOM",  "waterG": 56, "startSec": 0,   "endSec": 10  },
+    { "phase": "SECOND", "waterG": 98, "startSec": 35,  "endSec": 51  },
+    { "phase": "THIRD",  "waterG": 81, "startSec": 70,  "endSec": 84  },
+    { "phase": "FOURTH", "waterG": 65, "startSec": 105, "endSec": 116 }
   ],
-  "targetCurve": [[0,0],[10,60],[45,60],[77,156],[117,156],[143,235],[183,235],[205,300]]
+  "targetCurve": [[0,0],[10,56],[35,56],[51,154],[70,154],[84,235],[105,235],[116,300],[165,300]]
 }
 ```
 
 > 위 값은 [`rule-table.md` 7절 검증 예시](rule-table.md)와 동일합니다. pytest 회귀 테스트의 기준으로 그대로 씁니다.
+>
+> `targetCurve`의 마지막 점(165초)은 **드립다운** 구간입니다. 물을 붓지 않으므로 물량이 유지되며,
+> 화면에서 "이제 기다리세요"로 보입니다.
 
 `drinkType`이 `ICE`면 `iceMessage`에 `"얼음이 가득 담긴 컵에 부어 드세요!"`가 들어갑니다.
 

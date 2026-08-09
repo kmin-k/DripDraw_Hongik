@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./dripdraw.db"
 
     # 프론트 개발 서버(Vite). CONTRIBUTING.md "실행 포트" 참고.
-    cors_origins: list[str] = ["http://localhost:5173"]
+    cors_origins: list[str] = ["http://localhost:5180"]
 
 
 settings = Settings()

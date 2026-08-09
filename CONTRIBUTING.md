@@ -103,10 +103,10 @@ pytest                # 테스트
 
 | | 포트 | 비고 |
 |---|---|---|
-| frontend (Vite) | `5173` | |
+| frontend (Vite) | `5180` | Vite 기본값 5173은 카카오톡이 점유하는 경우가 있어 피했습니다 |
 | backend (uvicorn) | `8000` | Swagger는 `/docs` |
 
-백엔드 CORS 허용 origin은 `http://localhost:5173`입니다.
+백엔드 CORS 허용 origin은 `http://localhost:5180`입니다. 포트를 바꾸려면 `frontend/vite.config.ts`와 `backend/app/config.py`를 **함께** 고쳐야 합니다.
 
 ## Rule Table 원본 관리
 
