@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   CartesianGrid,
@@ -11,7 +12,7 @@ import {
 
 import type { ScaleStatus } from "../ble/types";
 import { useScale } from "../ble/useScale";
-import type { Recipe } from "../lib/api";
+import { api, type BrewResult, type Recipe } from "../lib/api";
 import type { Curve } from "../lib/rmse";
 import { useBrewSession } from "../lib/useBrewSession";
 
@@ -51,6 +52,33 @@ export default function BrewPage() {
 
   const scale = useScale();
   const brew = useBrewSession(scale.source, target);
+
+  const [saved, setSaved] = useState<BrewResult | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  /** 종료와 동시에 저장합니다. 정확도는 서버가 다시 계산한 값을 씁니다. */
+  const finishAndSave = async () => {
+    brew.finish();
+    const record = brew.getRecord();
+    if (!record) return;
+
+    setSaving(true);
+    setSaveError(null);
+    try {
+      setSaved(await api.saveBrew({ recipeId: recipe?.recipeId, ...record }));
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const restart = () => {
+    setSaved(null);
+    setSaveError(null);
+    brew.reset();
+  };
 
   const label = STATUS_LABEL[scale.status];
   const connected = scale.status === "CONNECTED";
@@ -167,7 +195,7 @@ export default function BrewPage() {
             <button onClick={brew.pause} className={btn}>
               일시정지
             </button>
-            <button onClick={brew.finish} className={btnPrimary}>
+            <button onClick={finishAndSave} className={btnPrimary}>
               추출 종료
             </button>
           </>
@@ -176,12 +204,12 @@ export default function BrewPage() {
             <button onClick={brew.resume} className={btnPrimary}>
               재개
             </button>
-            <button onClick={brew.finish} className={btn}>
+            <button onClick={finishAndSave} className={btn}>
               추출 종료
             </button>
           </>
         ) : (
-          <button onClick={brew.reset} className={btn}>
+          <button onClick={restart} className={btn}>
             다시 하기
           </button>
         )}
@@ -197,11 +225,30 @@ export default function BrewPage() {
           물의 양만 기록합니다.
         </p>
       )}
-      {finished && (
-        <p className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
-          추출이 끝났습니다. {brew.sampleCount}개 지점을 측정했고 정확도는{" "}
-          {brew.rmse === null ? "—" : `${brew.rmse.toFixed(1)} g`}입니다. 저장은 다음 단계에서
-          붙입니다.
+      {finished && saving && (
+        <p className="rounded border bg-white p-3 text-sm text-slate-600">기록을 저장하는 중…</p>
+      )}
+
+      {finished && saved && (
+        <div className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+          <div className="font-medium">기록 저장 완료 (#{saved.brewId})</div>
+          <div className="mt-1">
+            {brew.sampleCount}개 측정 · {saved.durationSec}초 · 최종 {saved.finalWeightG.toFixed(1)}{" "}
+            g · 정확도 {saved.rmse === null ? "—" : `${saved.rmse.toFixed(1)} g`}
+          </div>
+          {saved.rmse !== null && brew.rmse !== null && (
+            <div className="mt-1 text-xs text-emerald-700">
+              {Math.abs(saved.rmse - brew.rmse) < 0.05
+                ? "서버 재계산 결과가 화면 표시값과 일치합니다."
+                : `⚠ 화면 표시(${brew.rmse.toFixed(1)})와 서버 계산(${saved.rmse.toFixed(1)})이 다릅니다.`}
+            </div>
+          )}
+        </div>
+      )}
+
+      {finished && saveError && (
+        <p className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          기록 저장 실패 — {saveError}
         </p>
       )}
 

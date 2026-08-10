@@ -109,3 +109,35 @@ class RecipeOut(CamelModel):
     ice_message: str | None
     pours: list[PourOut]
     target_curve: list[list[int]]
+
+
+# --- 추출 기록 (Phase 2) ---
+
+
+class BrewCreate(CamelModel):
+    """추출 종료 시 프론트가 수집한 실측 곡선을 그대로 보냅니다.
+
+    RMSE는 보내지 않습니다. 서버가 목표 곡선과 대조해 직접 계산합니다(단일 진실 공급원).
+    """
+
+    #: 자유 모드는 따라간 목표가 없어 null입니다.
+    recipe_id: int | None = None
+    started_at: datetime
+    ended_at: datetime
+    #: [[경과 시간(초), 누적 물량(g)], ...] — 다운샘플링하지 않은 원본
+    actual_curve: list[list[float]] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def check_curve_shape(self) -> Self:
+        for point in self.actual_curve:
+            if len(point) != 2:
+                raise ValueError("actualCurve의 각 점은 [시간, 무게] 두 값이어야 합니다")
+        return self
+
+
+class BrewOut(CamelModel):
+    brew_id: int
+    #: 자유 모드는 비교할 목표가 없어 null입니다. 0과 다릅니다.
+    rmse: float | None
+    duration_sec: int
+    final_weight_g: float

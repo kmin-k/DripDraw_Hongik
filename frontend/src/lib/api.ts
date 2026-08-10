@@ -6,6 +6,8 @@
  * 둘 다 브라우저에서만 가능한 일이라 옮길 수 없습니다.
  */
 
+import type { Curve } from "./rmse";
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     headers: { "Content-Type": "application/json" },
@@ -79,11 +81,35 @@ export interface Recipe {
   targetCurve: [number, number][];
 }
 
+// --- 추출 기록 ---
+
+export interface BrewRequest {
+  /** 자유 모드는 따라간 목표가 없어 생략합니다. */
+  recipeId?: number;
+  startedAt: string;
+  endedAt: string;
+  /** 다운샘플링하지 않은 원본 곡선 (docs/api.md) */
+  actualCurve: Curve;
+}
+
+export interface BrewResult {
+  brewId: number;
+  /** 서버가 다시 계산한 값. 자유 모드는 null입니다. */
+  rmse: number | null;
+  durationSec: number;
+  finalWeightG: number;
+}
+
 export const api = {
   health: () => request<{ status: string }>("/health"),
   listBeans: () => request<{ items: Bean[] }>("/api/beans"),
   generateRecipe: (body: RecipeRequest) =>
     request<Recipe>("/api/recipe/generate", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  saveBrew: (body: BrewRequest) =>
+    request<BrewResult>("/api/brews", {
       method: "POST",
       body: JSON.stringify(body),
     }),

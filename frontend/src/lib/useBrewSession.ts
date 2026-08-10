@@ -86,6 +86,9 @@ export function useBrewSession(source: ScaleSource, target: Curve) {
   const startedAtMsRef = useRef(0);
   const pausedTotalMsRef = useRef(0);
   const pauseStartedMsRef = useRef(0);
+  // 서버에 보낼 실제 시각. 곡선의 x축은 performance.now 기반 상대 시간이라 별개입니다.
+  const startedAtIsoRef = useRef<string | null>(null);
+  const endedAtIsoRef = useRef<string | null>(null);
   /** 시작 직후 첫 패킷의 무게. 이후 모든 무게에서 뺍니다. */
   const baselineRef = useRef<number | null>(null);
   const chartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -145,13 +148,20 @@ export function useBrewSession(source: ScaleSource, target: Curve) {
   }, []);
 
   const start = useCallback(() => {
-    samplesRef.current = [];
+    // 원점을 미리 심습니다. 첫 패킷은 최대 한 주기(약 107ms) 뒤에 오고,
+    // 시작 버튼을 누른 뒤 주전자를 잡는 몇 초가 더 걸리기도 합니다.
+    // 심지 않으면 목표는 (0,0)에서 시작하는데 실측만 뒤에서 시작해 곡선이 어긋나 보이고,
+    // 그 빈 구간이 정확도 계산에서도 빠집니다.
+    samplesRef.current = [[0, 0]];
     accRef.current.reset();
+    accRef.current.add(0, 0);
     baselineRef.current = null;
     startedAtMsRef.current = performance.now();
+    startedAtIsoRef.current = new Date().toISOString();
+    endedAtIsoRef.current = null;
     pausedTotalMsRef.current = 0;
-    setLive({ elapsedSec: 0, weightG: 0, rmse: null, sampleCount: 0 });
-    setChartSamples([]);
+    setLive({ elapsedSec: 0, weightG: 0, rmse: 0, sampleCount: 1 });
+    setChartSamples(samplesRef.current);
     changePhase("RUNNING");
   }, [changePhase]);
 
@@ -169,6 +179,7 @@ export function useBrewSession(source: ScaleSource, target: Curve) {
   }, [changePhase]);
 
   const finish = useCallback(() => {
+    endedAtIsoRef.current = new Date().toISOString();
     changePhase("FINISHED");
     flushChart();
   }, [changePhase, flushChart]);
@@ -185,6 +196,17 @@ export function useBrewSession(source: ScaleSource, target: Curve) {
 
   /** 저장용 원본. 호출 시점에 읽으므로 렌더 중 ref 접근이 아닙니다. */
   const getSamples = useCallback(() => samplesRef.current, []);
+
+  /** 서버에 보낼 기록. 실제 측정이 없으면(원점만 있으면) null입니다. */
+  const getRecord = useCallback(() => {
+    const samples = samplesRef.current;
+    if (samples.length < 2 || !startedAtIsoRef.current) return null;
+    return {
+      startedAt: startedAtIsoRef.current,
+      endedAt: endedAtIsoRef.current ?? new Date().toISOString(),
+      actualCurve: samples,
+    };
+  }, []);
 
   // 목표선은 실측이 없는 구간에도 보여야 하므로 목표 꼭짓점을 함께 넣습니다.
   const chartData: ChartRow[] = [
@@ -205,6 +227,7 @@ export function useBrewSession(source: ScaleSource, target: Curve) {
     chartData,
     /** 저장용 원본. 다운샘플링하지 않습니다 (docs/api.md). */
     getSamples,
+    getRecord,
     hasTarget: target.length > 0,
     start,
     pause,
