@@ -237,13 +237,23 @@ export default function RecipePage() {
             {recipe.iceMessage && <p className="mt-1 text-sm text-sky-700">{recipe.iceMessage}</p>}
           </div>
 
-          {/* 목표 곡선을 추출 화면으로 넘깁니다. 자유 모드 버튼은 다음 단계에서 나란히 붙습니다. */}
-          <button
-            onClick={() => navigate("/brew", { state: { recipe } })}
-            className="w-full rounded bg-slate-900 px-4 py-3 text-sm font-medium text-white"
-          >
-            이 레시피로 추출하기
-          </button>
+          {/* 목표를 따라갈지, 내 방식대로 내리고 기록만 할지 고릅니다. */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <button
+              onClick={() => navigate("/brew", { state: { recipe } })}
+              className="rounded bg-slate-900 px-4 py-3 text-white"
+            >
+              <div className="text-sm font-medium">이 레시피로 추출하기</div>
+              <div className="mt-0.5 text-xs text-slate-300">목표 곡선을 따라가고 정확도 측정</div>
+            </button>
+            <button
+              onClick={() => navigate("/brew", { state: { free: true } })}
+              className="rounded border border-slate-300 px-4 py-3 hover:bg-slate-50"
+            >
+              <div className="text-sm font-medium">레시피 없이 추출하기</div>
+              <div className="mt-0.5 text-xs text-slate-500">내 방식대로 내리고 기록만</div>
+            </button>
+          </div>
         </>
       )}
     </section>

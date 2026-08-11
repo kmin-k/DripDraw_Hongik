@@ -19,9 +19,17 @@ import { useBrewSession } from "../lib/useBrewSession";
 /**
  * 데모 시나리오 3번 — 시연 성패를 가르는 화면.
  *
- * 목표 곡선은 레시피 화면에서 넘겨받습니다. 새로고침하면 사라지므로 그때는 안내를 띄웁니다.
- * 자유 모드(목표 없이 기록만)는 다음 단계에서 붙입니다.
+ * 두 가지 모드가 있습니다.
+ * - **가이드**: 레시피 화면에서 목표 곡선을 넘겨받아 따라가고 정확도를 측정
+ * - **자유**: 목표 없이 내 추출만 기록. 비교 대상이 없어 정확도가 나오지 않습니다.
+ *
+ * 둘 다 새로고침하면 넘겨받은 상태가 사라지므로 그때는 안내를 띄웁니다.
  */
+
+interface BrewNavState {
+  recipe?: Recipe;
+  free?: boolean;
+}
 
 const STATUS_LABEL: Record<ScaleStatus, { text: string; className: string }> = {
   DISCONNECTED: { text: "연결 안 됨", className: "bg-slate-200 text-slate-600" },
@@ -47,7 +55,9 @@ function Stat({ label, value, unit }: { label: string; value: string; unit: stri
 }
 
 export default function BrewPage() {
-  const recipe = (useLocation().state as { recipe?: Recipe } | null)?.recipe ?? null;
+  const navState = useLocation().state as BrewNavState | null;
+  const recipe = navState?.recipe ?? null;
+  const freeMode = navState?.free === true;
   const target: Curve = recipe?.targetCurve ?? [];
 
   const scale = useScale();
@@ -86,15 +96,16 @@ export default function BrewPage() {
   const paused = brew.phase === "PAUSED";
   const finished = brew.phase === "FINISHED";
 
-  if (!recipe) {
+  // 새로고침이나 직접 진입이면 넘겨받은 상태가 없습니다. 어느 모드인지 알 수 없으니 되돌립니다.
+  if (!recipe && !freeMode) {
     return (
       <section className="space-y-4">
         <h1 className="text-lg font-semibold">추출</h1>
         <div className="rounded border bg-white p-8 text-center text-sm text-slate-600">
-          따라갈 목표 곡선이 없습니다.
+          추출을 시작하려면 레시피 화면에서 방식을 골라 주세요.
           <div className="mt-3">
             <Link to="/recipe" className={btnPrimary}>
-              레시피 만들러 가기
+              레시피 화면으로
             </Link>
           </div>
         </div>
@@ -107,10 +118,14 @@ export default function BrewPage() {
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-lg font-semibold">추출</h1>
         <span className={`rounded px-2 py-0.5 text-xs ${label.className}`}>{label.text}</span>
-        <span className="text-xs text-slate-500">
-          목표 {recipe.totalWaterG} g · {recipe.waterTempC} ℃
-        </span>
-        {brew.sampleCount > 0 && (
+        {recipe ? (
+          <span className="text-xs text-slate-500">
+            목표 {recipe.totalWaterG} g · {recipe.waterTempC} ℃
+          </span>
+        ) : (
+          <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">자유 모드</span>
+        )}
+        {brew.sampleCount > 1 && (
           <span className="text-xs text-slate-400">측정 {brew.sampleCount}점</span>
         )}
       </div>
@@ -121,22 +136,27 @@ export default function BrewPage() {
         </p>
       )}
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className={`grid gap-3 ${recipe ? "grid-cols-3" : "grid-cols-2"}`}>
         <Stat label="부은 물" value={brew.weightG.toFixed(1)} unit="g" />
         <Stat label="경과" value={brew.elapsedSec.toFixed(0)} unit="초" />
-        <Stat
-          label="정확도 (RMSE)"
-          value={brew.rmse === null ? "—" : brew.rmse.toFixed(1)}
-          unit="g"
-        />
+        {/* 자유 모드는 비교할 목표가 없어 정확도 칸을 아예 두지 않습니다. "—"만 띄우면 고장처럼 보입니다. */}
+        {recipe && (
+          <Stat
+            label="정확도 (RMSE)"
+            value={brew.rmse === null ? "—" : brew.rmse.toFixed(1)}
+            unit="g"
+          />
+        )}
       </div>
 
       <div className="rounded border bg-white p-4">
         <div className="mb-2 flex items-center gap-4 text-xs text-slate-600">
-          <span className="flex items-center gap-1">
-            <span className="inline-block h-0 w-5 border-t-2 border-dashed border-slate-400" />
-            목표
-          </span>
+          {recipe && (
+            <span className="flex items-center gap-1">
+              <span className="inline-block h-0 w-5 border-t-2 border-dashed border-slate-400" />
+              목표
+            </span>
+          )}
           <span className="flex items-center gap-1">
             <span className="inline-block h-0 w-5 border-t-2 border-emerald-600" />
             실제
@@ -152,17 +172,19 @@ export default function BrewPage() {
               labelFormatter={(v) => `${Number(v).toFixed(0)}초`}
             />
             {/* 목표는 구간 선형이므로 곡선 보간을 쓰면 실제 규칙과 다른 모양이 됩니다. */}
-            <Line
-              type="linear"
-              dataKey="target"
-              name="목표"
-              stroke="#94a3b8"
-              strokeWidth={2}
-              strokeDasharray="6 4"
-              dot={false}
-              connectNulls
-              isAnimationActive={false}
-            />
+            {recipe && (
+              <Line
+                type="linear"
+                dataKey="target"
+                name="목표"
+                stroke="#94a3b8"
+                strokeWidth={2}
+                strokeDasharray="6 4"
+                dot={false}
+                connectNulls
+                isAnimationActive={false}
+              />
+            )}
             <Line
               type="linear"
               dataKey="actual"
@@ -234,13 +256,19 @@ export default function BrewPage() {
           <div className="font-medium">기록 저장 완료 (#{saved.brewId})</div>
           <div className="mt-1">
             {brew.sampleCount}개 측정 · {saved.durationSec}초 · 최종 {saved.finalWeightG.toFixed(1)}{" "}
-            g · 정확도 {saved.rmse === null ? "—" : `${saved.rmse.toFixed(1)} g`}
+            g{saved.rmse !== null && ` · 정확도 ${saved.rmse.toFixed(1)} g`}
           </div>
           {saved.rmse !== null && brew.rmse !== null && (
             <div className="mt-1 text-xs text-emerald-700">
               {Math.abs(saved.rmse - brew.rmse) < 0.05
                 ? "서버 재계산 결과가 화면 표시값과 일치합니다."
                 : `⚠ 화면 표시(${brew.rmse.toFixed(1)})와 서버 계산(${saved.rmse.toFixed(1)})이 다릅니다.`}
+            </div>
+          )}
+          {!recipe && (
+            <div className="mt-1 text-xs text-emerald-700">
+              따라간 목표가 없어 정확도는 기록되지 않습니다. 맛 평가로 레시피를 보정하려면 레시피를
+              만들어 추출하세요.
             </div>
           )}
         </div>

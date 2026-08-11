@@ -70,9 +70,12 @@ export function calculateRmse(target: Curve, actual: Curve): number | null {
 export function createRmseAccumulator(target: Curve) {
   let total = 0;
   let count = 0;
+  // 자유 모드는 따라갈 목표가 없습니다. 보간을 시도하면 예외가 나므로 아예 계산하지 않습니다.
+  const hasTarget = target.length > 0;
 
   return {
     add(timeSec: number, grams: number): void {
+      if (!hasTarget) return;
       const diff = grams - interpolateAt(target, timeSec);
       total += diff * diff;
       count += 1;

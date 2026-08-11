@@ -190,6 +190,13 @@ describe("createRmseAccumulator", () => {
     expect(createRmseAccumulator(GOLDEN_TARGET).value).toBeNull();
   });
 
+  it("목표가 없으면(자유 모드) 계산하지 않고 null을 유지한다", () => {
+    // 빈 곡선에 보간을 시도하면 예외가 납니다. 자유 모드에서 패킷마다 터지면 안 됩니다.
+    const acc = createRmseAccumulator([]);
+    expect(() => acc.add(10, 55)).not.toThrow();
+    expect(acc.value).toBeNull();
+  });
+
   it("리셋하면 처음 상태로 돌아간다", () => {
     const acc = createRmseAccumulator(GOLDEN_TARGET);
     acc.add(10, 999);
