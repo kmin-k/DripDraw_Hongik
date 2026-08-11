@@ -38,6 +38,7 @@ FastAPI가 `/docs`에 Swagger를 자동 생성하므로, **이 문서는 계약 
 | `POST` | `/api/recipe/adjust` | 4 |
 | `PATCH` | `/api/feedback/{id}` | 4 |
 | `POST` | `/api/brews` | 2 |
+| `POST` | `/api/brews/{id}/save-as-recipe` | 2 |
 | `GET` | `/api/brews` | 2 |
 | `GET` | `/api/brews/{id}` | 5 |
 | `POST` | `/api/vision/grind` | 6 |
@@ -186,6 +187,48 @@ Target이 구간 선형이므로 보간이 근사가 아니라 **정확**하고,
 ```json
 { "brewId": 34, "rmse": 4.71, "durationSec": 208, "finalWeightG": 298.4 }
 ```
+
+## `POST /api/brews/{id}/save-as-recipe` — 추출을 목표로 저장
+
+자유 모드로 내린 추출이 마음에 들었을 때, 그 곡선을 다음 목표로 삼습니다.
+Rule Engine 없이도 **"내가 만든 레시피"를 재현**할 수 있게 하는 경로입니다.
+
+**요청** — 자유 모드는 원두량·음용 방식을 받지 않으므로 여기서 함께 보냅니다.
+
+```json
+{ "doseG": 20, "drinkType": "HOT", "beanId": null }
+```
+
+**응답 `201`** — `source`가 `RECORDED`인 레시피
+
+```json
+{
+  "recipeId": 5,
+  "totalWaterG": 302,
+  "targetCurve": [[0,0],[10,53],[28,53],[42,153],[58,153],[70,243],[88,243],[98,302],[150,302]],
+  "waterTempC": null,
+  "ratio": null,
+  "flowRateGps": null,
+  "grindGuide": null,
+  "pours": []
+}
+```
+
+> **실측 곡선을 그대로 목표로 쓰지 않습니다.** 초당 9.3회 측정된 1,900여 점에는 손떨림과
+> 저울 진동이 섞여 있어, 그대로 쓰면 *"내가 흔들린 것까지 따라 하라"*가 됩니다.
+> 주수 구간만 찾아내 **규칙 엔진과 같은 구조**(붓기 → 대기 → 붓기 …)로 다시 그립니다.
+> 구현은 `backend/app/services/curve_shaping.py`.
+
+**Rule Engine 필드는 전부 `null`입니다.** 사용자가 손으로 부은 곡선에는 물 온도·유량 같은 규칙이
+애초에 존재하지 않습니다 ([`erd.md`](erd.md)).
+
+| 상태 | 조건 |
+|---|---|
+| 400 | 주수 구간을 찾지 못함 (저울만 켜두고 붓지 않은 기록) |
+| 404 | `brewId` 또는 `beanId` 없음 |
+| 422 | 원두량이 10~30 밖 |
+
+---
 
 ## `GET /api/brews` — 히스토리
 

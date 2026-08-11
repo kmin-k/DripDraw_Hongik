@@ -70,15 +70,17 @@ export interface Pour {
 
 export interface Recipe {
   recipeId: number;
-  waterTempC: number;
   totalWaterG: number;
-  ratio: number;
-  flowRateGps: number;
-  grindGuide: string;
-  iceMessage: string | null;
-  pours: Pour[];
   /** [[시간(초), 누적 물량(g)], ...] 구간 선형 곡선 */
   targetCurve: [number, number][];
+
+  /** 아래는 Rule Engine이 계산한 값. 기록(RECORDED) 레시피에는 없습니다. */
+  waterTempC: number | null;
+  ratio: number | null;
+  flowRateGps: number | null;
+  grindGuide: string | null;
+  iceMessage: string | null;
+  pours: Pour[];
 }
 
 // --- 추출 기록 ---
@@ -110,6 +112,12 @@ export const api = {
     }),
   saveBrew: (body: BrewRequest) =>
     request<BrewResult>("/api/brews", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  /** 마음에 든 추출을 다음 목표로 저장합니다. 곡선 다듬기는 서버가 합니다. */
+  saveBrewAsRecipe: (brewId: number, body: { doseG: number; drinkType: DrinkType }) =>
+    request<Recipe>(`/api/brews/${brewId}/save-as-recipe`, {
       method: "POST",
       body: JSON.stringify(body),
     }),

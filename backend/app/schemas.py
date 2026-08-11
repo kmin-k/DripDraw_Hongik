@@ -101,14 +101,17 @@ class PourOut(CamelModel):
 
 class RecipeOut(CamelModel):
     recipe_id: int
-    water_temp_c: int
     total_water_g: int
-    ratio: float
-    flow_rate_gps: float
-    grind_guide: str
-    ice_message: str | None
-    pours: list[PourOut]
     target_curve: list[list[int]]
+
+    # 아래는 Rule Engine이 계산한 부가 정보입니다.
+    # 사용자의 추출을 그대로 저장한 RECORDED 레시피에는 존재하지 않습니다 (docs/erd.md).
+    water_temp_c: int | None = None
+    ratio: float | None = None
+    flow_rate_gps: float | None = None
+    grind_guide: str | None = None
+    ice_message: str | None = None
+    pours: list[PourOut] = []
 
 
 # --- 추출 기록 (Phase 2) ---
@@ -141,3 +144,14 @@ class BrewOut(CamelModel):
     rmse: float | None
     duration_sec: int
     final_weight_g: float
+
+
+class SaveAsRecipeRequest(CamelModel):
+    """마음에 든 추출을 다음 목표로 저장합니다.
+
+    자유 모드는 원두량·음용 방식을 받지 않으므로 저장 시점에 물어봅니다.
+    """
+
+    dose_g: int = Field(ge=C.DOSE_MIN_G, le=C.DOSE_MAX_G)
+    drink_type: DrinkType
+    bean_id: int | None = None

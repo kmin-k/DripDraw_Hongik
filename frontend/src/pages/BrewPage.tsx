@@ -12,7 +12,7 @@ import {
 
 import type { ScaleStatus } from "../ble/types";
 import { useScale } from "../ble/useScale";
-import { api, type BrewResult, type Recipe } from "../lib/api";
+import { api, type BrewResult, type DrinkType, type Recipe } from "../lib/api";
 import type { Curve } from "../lib/rmse";
 import { useBrewSession } from "../lib/useBrewSession";
 
@@ -67,6 +67,31 @@ export default function BrewPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // 마음에 든 추출을 다음 목표로 저장하는 흐름.
+  // 자유 모드는 원두량·음용 방식을 받지 않았으므로 여기서 물어봅니다.
+  const [asRecipe, setAsRecipe] = useState({
+    open: false,
+    doseG: 20,
+    drinkType: "HOT" as DrinkType,
+  });
+  const [savedRecipe, setSavedRecipe] = useState<Recipe | null>(null);
+  const [recipeError, setRecipeError] = useState<string | null>(null);
+
+  const saveAsRecipe = async () => {
+    if (!saved) return;
+    setRecipeError(null);
+    try {
+      setSavedRecipe(
+        await api.saveBrewAsRecipe(saved.brewId, {
+          doseG: asRecipe.doseG,
+          drinkType: asRecipe.drinkType,
+        }),
+      );
+    } catch (err) {
+      setRecipeError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   /** 종료와 동시에 저장합니다. 정확도는 서버가 다시 계산한 값을 씁니다. */
   const finishAndSave = async () => {
     brew.finish();
@@ -87,6 +112,9 @@ export default function BrewPage() {
   const restart = () => {
     setSaved(null);
     setSaveError(null);
+    setSavedRecipe(null);
+    setRecipeError(null);
+    setAsRecipe((prev) => ({ ...prev, open: false }));
     brew.reset();
   };
 
@@ -267,10 +295,86 @@ export default function BrewPage() {
           )}
           {!recipe && (
             <div className="mt-1 text-xs text-emerald-700">
-              따라간 목표가 없어 정확도는 기록되지 않습니다. 맛 평가로 레시피를 보정하려면 레시피를
-              만들어 추출하세요.
+              따라간 목표가 없어 정확도는 기록되지 않습니다.
             </div>
           )}
+        </div>
+      )}
+
+      {/* 마음에 든 추출을 다음 목표로 저장 — Rule Engine 없이 재현 루프를 닫는 경로 */}
+      {finished && saved && !savedRecipe && (
+        <div className="rounded border bg-white p-4">
+          {!asRecipe.open ? (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="text-sm">
+                <div className="font-medium">이 추출이 마음에 드셨나요?</div>
+                <div className="mt-0.5 text-slate-500">
+                  목표로 저장해두면 다음에 같은 곡선을 따라 내릴 수 있습니다.
+                </div>
+              </div>
+              <button onClick={() => setAsRecipe((p) => ({ ...p, open: true }))} className={btn}>
+                목표로 저장
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="text-sm font-medium">이 추출을 목표로 저장</div>
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="text-sm">
+                  <span className="mb-1 block text-slate-600">원두량 {asRecipe.doseG} g</span>
+                  <input
+                    type="range"
+                    min={10}
+                    max={30}
+                    value={asRecipe.doseG}
+                    onChange={(e) => setAsRecipe((p) => ({ ...p, doseG: Number(e.target.value) }))}
+                  />
+                </label>
+                <label className="text-sm">
+                  <span className="mb-1 block text-slate-600">음용 방식</span>
+                  <select
+                    value={asRecipe.drinkType}
+                    onChange={(e) =>
+                      setAsRecipe((p) => ({ ...p, drinkType: e.target.value as DrinkType }))
+                    }
+                    className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+                  >
+                    <option value="HOT">핫</option>
+                    <option value="ICE">아이스</option>
+                  </select>
+                </label>
+                <button onClick={saveAsRecipe} className={btnPrimary}>
+                  저장
+                </button>
+                <button onClick={() => setAsRecipe((p) => ({ ...p, open: false }))} className={btn}>
+                  취소
+                </button>
+              </div>
+              <p className="text-xs text-slate-500">
+                실측 그대로가 아니라 <b>주수 구간만 뽑아 따라 하기 쉬운 곡선</b>으로 다듬어
+                저장합니다. 손떨림까지 따라 할 필요는 없으니까요.
+              </p>
+            </div>
+          )}
+          {recipeError && <p className="mt-2 text-sm text-red-700">{recipeError}</p>}
+        </div>
+      )}
+
+      {savedRecipe && (
+        <div className="rounded border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
+          <div className="font-medium">목표로 저장했습니다 (레시피 #{savedRecipe.recipeId})</div>
+          <div className="mt-1">
+            측정 {brew.sampleCount}점을 {savedRecipe.targetCurve.length}점으로 다듬었습니다 · 총{" "}
+            {savedRecipe.totalWaterG} g
+          </div>
+          <Link
+            to="/brew"
+            state={{ recipe: savedRecipe }}
+            onClick={restart}
+            className="mt-2 inline-block rounded bg-sky-700 px-3 py-1.5 text-xs font-medium text-white"
+          >
+            이 목표로 다시 내리기
+          </Link>
         </div>
       )}
 
