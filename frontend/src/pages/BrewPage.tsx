@@ -298,6 +298,16 @@ export default function BrewPage() {
               따라간 목표가 없어 정확도는 기록되지 않습니다.
             </div>
           )}
+          {/* 맛 평가는 따라간 목표가 있어야 보정할 대상이 생깁니다. 자유 모드에는 띄우지 않습니다. */}
+          {recipe && (
+            <Link
+              to="/feedback"
+              state={{ brewId: saved.brewId, recipe }}
+              className="mt-2 inline-block rounded bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white"
+            >
+              맛 평가하기
+            </Link>
+          )}
         </div>
       )}
 

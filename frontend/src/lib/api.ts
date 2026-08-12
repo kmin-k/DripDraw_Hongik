@@ -102,6 +102,42 @@ export interface BrewResult {
   finalWeightG: number;
 }
 
+// --- 맛 평가와 보정 (Phase 4) ---
+
+/** 가운데 값(OK)은 dead zone입니다. 만족스러우면 건드리지 않습니다. */
+export type Acidity = "WEAK" | "OK" | "STRONG";
+export type Bitterness = "WEAK" | "OK" | "STRONG";
+export type Strength = "THIN" | "OK" | "THICK";
+
+export interface TasteRating {
+  acidity: Acidity;
+  bitterness: Bitterness;
+  strength: Strength;
+}
+
+/**
+ * 무엇이 왜 바뀌었는지 한 줄. 이 배열이 화면의 변경 내역 표가 됩니다.
+ *
+ * 판단은 서버가 이미 끝냈습니다. 프론트는 배열을 표로 그리고 한글 라벨만 붙입니다.
+ */
+export interface Change {
+  field: string;
+  before: number | string;
+  after: number | string;
+  reason: string;
+}
+
+export interface AdjustResult {
+  feedbackId: number;
+  suggestedRecipeId: number;
+  parentRecipeId: number;
+  changes: Change[];
+  /** 조정하지 못한 이유. 여러 건이 동시에 걸릴 수 있어 배열입니다. */
+  notices: string[];
+  /** generate와 같은 형식이라 그대로 추출 화면에 넘길 수 있습니다. */
+  recipe: Recipe;
+}
+
 export const api = {
   health: () => request<{ status: string }>("/health"),
   listBeans: () => request<{ items: Bean[] }>("/api/beans"),
@@ -120,5 +156,17 @@ export const api = {
     request<Recipe>(`/api/brews/${brewId}/save-as-recipe`, {
       method: "POST",
       body: JSON.stringify(body),
+    }),
+  /** 맛 평가를 보내고 보정된 레시피를 받습니다. 조정 규칙은 전부 서버에 있습니다. */
+  adjustRecipe: (brewId: number, taste: TasteRating) =>
+    request<AdjustResult>("/api/recipe/adjust", {
+      method: "POST",
+      body: JSON.stringify({ brewId, ...taste }),
+    }),
+  /** 제안을 받아들였는지 기록합니다. 만드는 것과 받아들이는 것은 다른 사건입니다. */
+  updateFeedback: (feedbackId: number, applied: boolean) =>
+    request<{ feedbackId: number; applied: boolean | null }>(`/api/feedback/${feedbackId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ applied }),
     }),
 };
