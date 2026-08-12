@@ -271,31 +271,49 @@ Rule Engine 없이도 **"내가 만든 레시피"를 재현**할 수 있게 하�
   "suggestedRecipeId": 13,
   "parentRecipeId": 12,
   "changes": [
-    { "field": "ratio",      "before": 15,  "after": 14,  "reason": "농도 연함" },
-    { "field": "flowRateGps","before": 3.0, "after": 3.5, "reason": "쓴맛 강함" },
-    { "field": "waterTempC", "before": 96,  "after": 95,  "reason": "쓴맛 강함" }
+    { "field": "ratio",       "before": 15,  "after": 14,  "reason": "농도 연함" },
+    { "field": "waterTempC",  "before": 96,  "after": 95,  "reason": "쓴맛 강함" },
+    { "field": "flowRateGps", "before": 6.0, "after": 6.5, "reason": "쓴맛 강함" },
+    { "field": "grindGuide",  "before": "현재 분쇄도 유지", "after": "1단계 굵게", "reason": "쓴맛 강함" }
   ],
-  "targetCurve": [[0,0]]
+  "notices": [],
+  "recipe": { "recipeId": 13, "totalWaterG": 280, "targetCurve": [[0,0]] }
 }
 ```
 
 `changes` 배열이 **발표의 핵심**입니다. "왜 이렇게 바뀌었는지"를 화면에 그대로 보여줄 수 있어야 합니다.
+`before`와 `after`가 같은 항목은 넣지 않습니다 — 안 바뀐 값을 바뀌었다고 보여주는 셈이 됩니다.
 조정 폭은 [`rule-table.md` 8-4절, 8-6절](rule-table.md)에 확정돼 있습니다 — Ratio ±1.0, 물 온도 ±1℃, 유량 ±0.5 g/s, 분쇄도 ±1단계(50 μm).
 
-조정이 일부 또는 전부 적용되지 못하면 `notice`로 이유를 알립니다 ([`rule-table.md` 8-4절, 8-6절](rule-table.md)의 충돌·클램프 규칙).
+`recipe`는 `POST /api/recipe/generate`와 같은 형식이라, 보정 결과를 그대로 추출 화면에 넘길 수 있습니다.
+이전 곡선과 겹쳐 그리려면 `parentRecipeId`로 원본을 따로 조회합니다.
+
+조정이 일부 또는 전부 적용되지 못하면 `notices`로 이유를 알립니다 ([`rule-table.md` 8-4절, 8-6절](rule-table.md)의 충돌·클램프 규칙). 여러 건이 동시에 걸릴 수 있어 **배열**입니다.
 
 ```json
-{ "changes": [], "notice": "분쇄도 균일성을 확인해 보세요" }
+{ "changes": [], "notices": ["신맛과 쓴맛이 함께 강합니다. 분쇄도 균일성을 확인해 보세요"] }
 ```
 
 - 신맛·쓴맛이 서로 반대 방향(둘 다 강함, 둘 다 약함)이면 상쇄 — 조정 없이 위 안내
-- Ratio 증가로 주수 간 대기가 음수가 되면 해당 조정 제외 — `"현재 원두량에서는 물을 더 늘릴 수 없어요"`
+- Ratio 증가로 푸어가 주수 간격을 넘으면 해당 조정 제외 — `"현재 원두량에서는 물을 더 늘릴 수 없어요"`
+- 같은 이유로 유량을 낮추는 조정도 막힐 수 있습니다 — `"현재 원두량에서는 유량을 더 낮출 수 없어요"`
+- 파라미터가 상·하한에 도달해 더 못 움직이면 그 사실을 알립니다
+
+**거절**
+
+| 상황 | 코드 |
+|---|---|
+| 자유 모드 추출(`recipeId` 없음) | `400` — 보정할 원본이 없습니다 |
+| `RECORDED` 레시피로 한 추출 | `400` — 조정할 파라미터(온도·유량·Ratio)가 없습니다 |
+| 이미 평가한 추출 | `409` — 한 추출에 평가는 하나입니다 |
 
 적용 여부 기록:
 
 ```
 PATCH /api/feedback/{id}   { "applied": true }
 ```
+
+보정을 **만드는 것**과 **받아들이는 것**은 다른 사건이라 따로 남깁니다. "제안했지만 쓰지 않은" 기록이 나중에 학습 신호가 됩니다.
 
 ---
 

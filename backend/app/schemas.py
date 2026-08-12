@@ -146,6 +146,64 @@ class BrewOut(CamelModel):
     final_weight_g: float
 
 
+class Acidity(StrEnum):
+    STRONG = "STRONG"
+    OK = "OK"
+    WEAK = "WEAK"
+
+
+class Bitterness(StrEnum):
+    STRONG = "STRONG"
+    OK = "OK"
+    WEAK = "WEAK"
+
+
+class Strength(StrEnum):
+    THICK = "THICK"
+    OK = "OK"
+    THIN = "THIN"
+
+
+class RecipeAdjustRequest(CamelModel):
+    """맛 평가. 어떤 추출(brew)에 대한 평가인지로 원본 레시피를 찾습니다."""
+
+    brew_id: int
+    acidity: Acidity
+    bitterness: Bitterness
+    strength: Strength
+
+
+class ChangeOut(CamelModel):
+    """무엇이 왜 바뀌었는지 한 줄. 이 표가 화면에 그대로 나갑니다 (docs/api.md)."""
+
+    field: str
+    before: float | str
+    after: float | str
+    reason: str
+
+
+class RecipeAdjustResponse(CamelModel):
+    feedback_id: int
+    suggested_recipe_id: int
+    parent_recipe_id: int
+    changes: list[ChangeOut]
+    #: 조정하지 못한 이유. 상쇄·클램프·물량 한계가 동시에 걸릴 수 있어 목록입니다.
+    notices: list[str] = []
+    #: 보정 결과 레시피. 이전 곡선과 겹쳐 그리려면 원본 레시피를 따로 조회합니다.
+    recipe: RecipeOut
+
+
+class FeedbackUpdate(CamelModel):
+    """제안을 수락했는지 기록합니다. 나중에 개인화 모델의 학습 신호가 됩니다."""
+
+    applied: bool
+
+
+class FeedbackOut(CamelModel):
+    feedback_id: int
+    applied: bool | None
+
+
 class SaveAsRecipeRequest(CamelModel):
     """마음에 든 추출을 다음 목표로 저장합니다.
 
