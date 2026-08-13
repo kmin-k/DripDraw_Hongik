@@ -2,18 +2,43 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Bean, Brew, Recipe
-from app.schemas import BrewCreate, BrewOut, RecipeOut, SaveAsRecipeRequest
+from app.schemas import (
+    BrewCreate,
+    BrewDetail,
+    BrewList,
+    BrewListItem,
+    BrewOut,
+    FeedbackDetail,
+    RecipeOut,
+    SaveAsRecipeRequest,
+)
 from app.services.curve_shaping import shape_target_curve
 from app.services.rmse import calculate_rmse
 
 router = APIRouter(prefix="/api/brews", tags=["brews"])
 
 DbSession = Annotated[Session, Depends(get_db)]
+
+
+def _recipe_out(recipe: Recipe) -> RecipeOut:
+    """저장된 레시피를 응답 형태로. RECORDED 레시피는 규칙 필드가 전부 None입니다."""
+    return RecipeOut(
+        recipe_id=recipe.id,
+        water_temp_c=recipe.water_temp_c,
+        total_water_g=int(recipe.total_water_g),
+        ratio=recipe.ratio,
+        flow_rate_gps=recipe.flow_rate,
+        grind_guide=recipe.grind_guide,
+        ice_message=("얼음이 가득 담긴 컵에 부어 드세요!" if recipe.drink_type == "ICE" else None),
+        pours=recipe.pour_plan or [],
+        target_curve=recipe.target_curve,
+    )
 
 
 @router.post("", response_model=BrewOut, status_code=status.HTTP_201_CREATED)
@@ -53,6 +78,70 @@ def create_brew(payload: BrewCreate, db: DbSession) -> BrewOut:
         rmse=brew.rmse,
         duration_sec=brew.duration_sec,
         final_weight_g=brew.final_weight_g,
+    )
+
+
+@router.get("", response_model=BrewList)
+def list_brews(db: DbSession, limit: Annotated[int, Query(ge=1, le=200)] = 50) -> BrewList:
+    """최근 추출부터 나열합니다.
+
+    목록에는 곡선을 담지 않습니다. 곡선 하나가 2,000점이라 몇 건만 모여도 응답이 커지고,
+    훑어보는 화면에는 필요하지 않습니다.
+    """
+    brews = db.scalars(select(Brew).order_by(Brew.id.desc()).limit(limit)).all()
+
+    items = []
+    for brew in brews:
+        recipe = brew.recipe
+        bean = recipe.bean if recipe else None
+        items.append(
+            BrewListItem(
+                brew_id=brew.id,
+                brewed_at=brew.started_at,
+                rmse=brew.rmse,
+                duration_sec=brew.duration_sec,
+                final_weight_g=brew.final_weight_g,
+                bean_name=bean.name if bean else None,
+                dose_g=recipe.dose_g if recipe else None,
+                total_water_g=recipe.total_water_g if recipe else None,
+                free_mode=recipe is None,
+                has_feedback=brew.feedback is not None,
+            )
+        )
+    return BrewList(items=items)
+
+
+@router.get("/{brew_id}", response_model=BrewDetail)
+def get_brew(brew_id: int, db: DbSession) -> BrewDetail:
+    """추출 하나의 전부. 곡선을 다시 그리고 여기서 바로 다시 내릴 수 있어야 합니다."""
+    brew = db.get(Brew, brew_id)
+    if brew is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"brew_id {brew_id} not found")
+
+    recipe = brew.recipe
+    feedback = brew.feedback
+
+    return BrewDetail(
+        brew_id=brew.id,
+        brewed_at=brew.started_at,
+        rmse=brew.rmse,
+        duration_sec=brew.duration_sec,
+        final_weight_g=brew.final_weight_g,
+        actual_curve=brew.actual_curve,
+        bean_name=recipe.bean.name if recipe and recipe.bean else None,
+        recipe=_recipe_out(recipe) if recipe else None,
+        feedback=(
+            FeedbackDetail(
+                feedback_id=feedback.id,
+                acidity=feedback.acidity,
+                bitterness=feedback.bitterness,
+                strength=feedback.strength,
+                suggested_recipe_id=feedback.suggested_recipe_id,
+                applied=feedback.applied,
+            )
+            if feedback
+            else None
+        ),
     )
 
 

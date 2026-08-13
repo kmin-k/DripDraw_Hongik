@@ -146,6 +146,57 @@ class BrewOut(CamelModel):
     final_weight_g: float
 
 
+class BrewListItem(CamelModel):
+    """히스토리 한 줄. 목록에는 곡선을 담지 않습니다.
+
+    곡선 하나가 2,000점(약 45 KB)이라, 20건만 나열해도 응답이 1 MB에 가까워집니다.
+    목록은 훑어보는 화면이므로 요약만 보내고 곡선은 상세에서 가져갑니다.
+    """
+
+    brew_id: int
+    brewed_at: datetime
+    #: 자유 모드는 비교할 목표가 없어 null입니다. 0과 다릅니다.
+    rmse: float | None
+    duration_sec: int
+    final_weight_g: float
+    #: 원두를 등록하지 않고 만든 레시피, 자유 모드 추출은 null입니다.
+    bean_name: str | None
+    dose_g: int | None
+    total_water_g: float | None
+    #: 자유 모드 추출인지. 화면에서 정확도 칸을 "—"로 둘지 정하는 데 씁니다.
+    free_mode: bool
+    #: 이미 평가한 추출인지. 평가는 추출당 하나뿐이라 재진입을 막아야 합니다.
+    has_feedback: bool
+
+
+class BrewList(CamelModel):
+    items: list[BrewListItem]
+
+
+class FeedbackDetail(CamelModel):
+    feedback_id: int
+    acidity: str
+    bitterness: str
+    strength: str
+    suggested_recipe_id: int | None
+    applied: bool | None
+
+
+class BrewDetail(CamelModel):
+    """추출 하나의 전부. 곡선을 다시 그리고 여기서 바로 다시 내릴 수 있어야 합니다."""
+
+    brew_id: int
+    brewed_at: datetime
+    rmse: float | None
+    duration_sec: int
+    final_weight_g: float
+    actual_curve: list[list[float]]
+    bean_name: str | None
+    #: 따라간 목표. 자유 모드는 null이고 화면은 실측 한 줄만 그립니다.
+    recipe: RecipeOut | None
+    feedback: FeedbackDetail | None
+
+
 class Acidity(StrEnum):
     STRONG = "STRONG"
     OK = "OK"

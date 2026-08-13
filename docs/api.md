@@ -232,19 +232,43 @@ Rule Engine 없이도 **"내가 만든 레시피"를 재현**할 수 있게 하�
 
 ## `GET /api/brews` — 히스토리
 
+최근 추출부터. 선택 파라미터 `limit` (1~200, 기본 50).
+
 ```json
 {
   "items": [
-    { "brewId": 34, "beanName": "Ethiopia Yirgacheffe", "brewedAt": "2026-07-31T09:12:03Z",
-      "rmse": 4.71, "doseG": 20, "totalWaterG": 300, "hasFeedback": true }
+    { "brewId": 34, "brewedAt": "2026-08-13T09:12:03Z", "rmse": 4.71,
+      "durationSec": 205, "finalWeightG": 300.4,
+      "beanName": "Ethiopia Yirgacheffe", "doseG": 20, "totalWaterG": 300,
+      "freeMode": false, "hasFeedback": true }
   ]
 }
 ```
 
+**목록에는 곡선을 담지 않습니다.** 곡선 하나가 약 2,000점(45 KB)이라 몇 건만 모여도 응답이 커지고, 훑어보는 화면에는 필요하지 않습니다. 곡선은 상세에서 가져갑니다.
+
+- `freeMode`가 `true`면 따라간 목표가 없어 `rmse`·`doseG`·`totalWaterG`가 전부 `null`입니다
+- `beanName`은 원두를 등록하지 않고 만든 레시피에서도 `null`입니다
+- `hasFeedback`으로 이미 평가한 추출을 구분합니다. 평가는 추출당 하나뿐입니다
+
 ## `GET /api/brews/{id}` — 상세
 
-`targetCurve`, `actualCurve`, `pours`, 레시피 파라미터 전체, `feedback`을 함께 반환합니다.
-"이 레시피로 다시 내리기"는 응답의 `recipeId`를 그대로 재사용하면 됩니다.
+```json
+{
+  "brewId": 34, "brewedAt": "2026-08-13T09:12:03Z", "rmse": 4.71,
+  "durationSec": 205, "finalWeightG": 300.4,
+  "actualCurve": [[0, 0]],
+  "beanName": "Ethiopia Yirgacheffe",
+  "recipe": { "recipeId": 12, "targetCurve": [[0, 0]] },
+  "feedback": { "feedbackId": 8, "acidity": "OK", "bitterness": "STRONG",
+                "strength": "THIN", "suggestedRecipeId": 13, "applied": true }
+}
+```
+
+`recipe`는 `POST /api/recipe/generate`와 같은 형식입니다. **"이 레시피로 다시 내리기"는 `recipe`를 그대로 추출 화면에 넘기면 됩니다.**
+
+- 자유 모드 추출은 `recipe`가 `null`입니다. 화면은 실측 한 줄만 그립니다
+- 평가하지 않았으면 `feedback`이 `null`입니다
 
 ---
 
