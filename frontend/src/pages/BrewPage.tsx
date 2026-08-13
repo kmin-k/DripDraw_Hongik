@@ -193,7 +193,14 @@ export default function BrewPage() {
         <ResponsiveContainer width="100%" height={280}>
           <LineChart data={brew.chartData} margin={{ top: 5, right: 10, bottom: 5, left: -20 }}>
             <CartesianGrid stroke="#e2e8f0" />
-            <XAxis dataKey="sec" type="number" domain={[0, "dataMax"]} fontSize={12} />
+            {/* 목표가 없는 자유 모드에서는 실측 마지막 시각이 그대로 눈금이 됩니다. */}
+            <XAxis
+              dataKey="sec"
+              type="number"
+              domain={[0, "dataMax"]}
+              tickFormatter={(v) => Number(v).toFixed(0)}
+              fontSize={12}
+            />
             <YAxis fontSize={12} />
             <Tooltip
               formatter={(value, name) => [`${Number(value).toFixed(1)} g`, name]}

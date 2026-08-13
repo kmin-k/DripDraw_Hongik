@@ -88,7 +88,11 @@ def list_brews(db: DbSession, limit: Annotated[int, Query(ge=1, le=200)] = 50) -
     목록에는 곡선을 담지 않습니다. 곡선 하나가 2,000점이라 몇 건만 모여도 응답이 커지고,
     훑어보는 화면에는 필요하지 않습니다.
     """
-    brews = db.scalars(select(Brew).order_by(Brew.id.desc()).limit(limit)).all()
+    # 화면에 보여주는 값(추출 시각)으로 정렬합니다. 저장 순서(id)로 정렬하면
+    # 둘이 어긋날 때 목록이 뒤죽박죽으로 보입니다. id는 같은 시각일 때의 기준입니다.
+    brews = db.scalars(
+        select(Brew).order_by(Brew.started_at.desc(), Brew.id.desc()).limit(limit)
+    ).all()
 
     items = []
     for brew in brews:

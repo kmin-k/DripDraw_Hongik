@@ -1,7 +1,9 @@
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 
+import BrewDetailPage from "./pages/BrewDetailPage";
 import BrewPage from "./pages/BrewPage";
 import FeedbackPage from "./pages/FeedbackPage";
+import HistoryPage from "./pages/HistoryPage";
 import RecipePage from "./pages/RecipePage";
 
 /**
@@ -12,6 +14,7 @@ const NAV = [
   { to: "/recipe", label: "레시피" },
   { to: "/brew", label: "추출" },
   { to: "/feedback", label: "맛 평가" },
+  { to: "/history", label: "기록" },
 ];
 
 export default function App() {
@@ -42,6 +45,9 @@ export default function App() {
           <Route path="/recipe" element={<RecipePage />} />
           <Route path="/brew" element={<BrewPage />} />
           <Route path="/feedback" element={<FeedbackPage />} />
+          <Route path="/history" element={<HistoryPage />} />
+          {/* 상세는 주소에 id를 둡니다. 새로고침해도 살아남고 링크를 그대로 열 수 있습니다. */}
+          <Route path="/history/:brewId" element={<BrewDetailPage />} />
         </Routes>
       </main>
     </div>

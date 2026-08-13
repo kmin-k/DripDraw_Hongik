@@ -48,6 +48,33 @@ class TestList:
         ids = [item["brewId"] for item in client.get("/api/brews").json()["items"]]
         assert ids == [second, first]
 
+    def test_sorted_by_brew_time_not_insertion_order(self, client):
+        """화면에 보여주는 값(추출 시각)으로 정렬해야 합니다.
+
+        저장 순서로 정렬하면 나중에 저장한 오래된 추출이 맨 위로 올라가,
+        사용자에게는 목록이 뒤죽박죽으로 보입니다.
+        """
+        curve = brew_curve(TYPICAL, total_sec=150)
+
+        def save(started: str) -> int:
+            return client.post(
+                "/api/brews",
+                json={
+                    "actualCurve": curve,
+                    "startedAt": f"{started}T09:00:00Z",
+                    "endedAt": f"{started}T09:03:00Z",
+                },
+            ).json()["brewId"]
+
+        # 최근 추출을 **먼저** 저장하고, 오래된 추출을 나중에 저장합니다.
+        # 저장 순서로 정렬하면 오래된 쪽이 위로 올라와 틀린 순서가 됩니다.
+        newer = save("2026-08-20")
+        older = save("2026-08-01")
+        assert older > newer  # 저장 순서는 반대
+
+        ids = [item["brewId"] for item in client.get("/api/brews").json()["items"]]
+        assert ids == [newer, older]
+
     def test_carries_the_bean_name(self, client):
         bean_id = client.post("/api/beans", json=BEAN).json()["id"]
         guided_brew(client, bean_id)

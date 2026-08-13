@@ -8,6 +8,22 @@
 
 import type { Curve } from "./rmse";
 
+/**
+ * 상태 코드를 들고 다니는 오류.
+ *
+ * 서버 메시지는 개발자용이라 화면에 그대로 띄우면 안 되는 경우가 있습니다
+ * (예: 404의 `brew_id 9999 not found`). 코드로 구분해 화면에 맞는 문구를 씁니다.
+ */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     headers: { "Content-Type": "application/json" },
@@ -15,7 +31,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(formatError(body, res));
+    throw new ApiError(formatError(body, res), res.status);
   }
   return res.json() as Promise<T>;
 }
@@ -102,6 +118,49 @@ export interface BrewResult {
   finalWeightG: number;
 }
 
+// --- 히스토리 (Phase 5) ---
+
+/**
+ * 목록 한 줄. **곡선이 없습니다** — 곡선 하나가 2,000점이라 목록에 담지 않습니다.
+ * 곡선이 필요하면 상세를 따로 가져옵니다.
+ */
+export interface BrewListItem {
+  brewId: number;
+  brewedAt: string;
+  /** 자유 모드는 비교할 목표가 없어 null입니다. 0과 다릅니다. */
+  rmse: number | null;
+  durationSec: number;
+  finalWeightG: number;
+  beanName: string | null;
+  doseG: number | null;
+  totalWaterG: number | null;
+  freeMode: boolean;
+  /** 평가는 추출당 하나뿐입니다. 이미 했으면 버튼을 띄우지 않습니다. */
+  hasFeedback: boolean;
+}
+
+export interface FeedbackDetail {
+  feedbackId: number;
+  acidity: Acidity;
+  bitterness: Bitterness;
+  strength: Strength;
+  suggestedRecipeId: number | null;
+  applied: boolean | null;
+}
+
+export interface BrewDetail {
+  brewId: number;
+  brewedAt: string;
+  rmse: number | null;
+  durationSec: number;
+  finalWeightG: number;
+  actualCurve: [number, number][];
+  beanName: string | null;
+  /** 따라간 목표. 자유 모드는 null이고 화면은 실측 한 줄만 그립니다. */
+  recipe: Recipe | null;
+  feedback: FeedbackDetail | null;
+}
+
 // --- 맛 평가와 보정 (Phase 4) ---
 
 /** 가운데 값(OK)은 dead zone입니다. 만족스러우면 건드리지 않습니다. */
@@ -157,6 +216,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  /** 최근 추출부터. 목록에는 곡선이 없습니다. */
+  listBrews: () => request<{ items: BrewListItem[] }>("/api/brews"),
+  getBrew: (brewId: number) => request<BrewDetail>(`/api/brews/${brewId}`),
   /** 맛 평가를 보내고 보정된 레시피를 받습니다. 조정 규칙은 전부 서버에 있습니다. */
   adjustRecipe: (brewId: number, taste: TasteRating) =>
     request<AdjustResult>("/api/recipe/adjust", {
