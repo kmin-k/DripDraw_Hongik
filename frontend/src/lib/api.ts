@@ -56,9 +56,21 @@ function formatError(body: unknown, res: Response): string {
 export interface Bean {
   id: number;
   name: string;
-  region: string;
-  process: string;
-  roastLevel: string;
+  roaster: string | null;
+  region: Region;
+  process: Process;
+  roastLevel: RoastLevel;
+  memo: string | null;
+  createdAt: string;
+}
+
+export interface BeanCreate {
+  name: string;
+  roaster?: string | null;
+  region: Region;
+  process: Process;
+  roastLevel: RoastLevel;
+  memo?: string | null;
 }
 
 // --- 레시피 ---
@@ -69,6 +81,13 @@ export type Region = "AFRICA" | "CENTRAL_AMERICA" | "SOUTH_AMERICA" | "ASIA_PACI
 export type Process = "WASHED" | "NATURAL";
 
 export interface RecipeRequest {
+  /**
+   * 등록한 원두를 고른 경우. 서버가 이 원두의 지역·가공·로스팅을 기준으로 계산합니다.
+   * 함께 보낸 지역·가공·로스팅보다 **원두 쪽이 우선**입니다.
+   *
+   * 이 값을 보내야 레시피에 원두가 연결되고, 히스토리에 원두 이름이 나옵니다.
+   */
+  beanId?: number;
   doseG: number;
   drinkType: DrinkType;
   roastLevel: RoastLevel;
@@ -200,6 +219,8 @@ export interface AdjustResult {
 export const api = {
   health: () => request<{ status: string }>("/health"),
   listBeans: () => request<{ items: Bean[] }>("/api/beans"),
+  createBean: (body: BeanCreate) =>
+    request<Bean>("/api/beans", { method: "POST", body: JSON.stringify(body) }),
   generateRecipe: (body: RecipeRequest) =>
     request<Recipe>("/api/recipe/generate", {
       method: "POST",

@@ -1,5 +1,6 @@
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 
+import BeansPage from "./pages/BeansPage";
 import BrewDetailPage from "./pages/BrewDetailPage";
 import BrewPage from "./pages/BrewPage";
 import FeedbackPage from "./pages/FeedbackPage";
@@ -11,6 +12,7 @@ import RecipePage from "./pages/RecipePage";
  * 디자인·애니메이션·반응형은 범위 밖입니다.
  */
 const NAV = [
+  { to: "/beans", label: "원두" },
   { to: "/recipe", label: "레시피" },
   { to: "/brew", label: "추출" },
   { to: "/feedback", label: "맛 평가" },
@@ -42,6 +44,7 @@ export default function App() {
       <main className="mx-auto max-w-3xl px-4 py-6">
         <Routes>
           <Route path="/" element={<Navigate to="/recipe" replace />} />
+          <Route path="/beans" element={<BeansPage />} />
           <Route path="/recipe" element={<RecipePage />} />
           <Route path="/brew" element={<BrewPage />} />
           <Route path="/feedback" element={<FeedbackPage />} />

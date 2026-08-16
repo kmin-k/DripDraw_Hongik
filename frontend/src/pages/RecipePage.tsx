@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   CartesianGrid,
   Line,
@@ -10,7 +10,8 @@ import {
   YAxis,
 } from "recharts";
 
-import { api, type Recipe, type RecipeRequest } from "../lib/api";
+import { api, type Bean, type Recipe, type RecipeRequest } from "../lib/api";
+import { DRINK, PHASE, PROCESS, REGION, ROAST } from "../lib/labels";
 
 /**
  * 데모 시나리오 2번 — 입력을 바꾸면 Target Curve가 즉시 달라지는 화면.
@@ -18,18 +19,6 @@ import { api, type Recipe, type RecipeRequest } from "../lib/api";
  * 계산은 전부 서버(Rule Engine)가 합니다. 이 화면은 입력을 모아 보내고 받은 값을 그리기만 합니다.
  * 규칙을 프론트에 복제하면 서버와 반드시 어긋나기 때문입니다 (docs/rule-table.md).
  */
-
-// ENUM은 영어 대문자로 저장하고 한글 라벨은 프론트에서 매핑합니다 (docs/erd.md).
-const ROAST = { LIGHT: "라이트", MEDIUM: "미디움", DARK: "다크" } as const;
-const REGION = {
-  AFRICA: "아프리카",
-  CENTRAL_AMERICA: "중미",
-  SOUTH_AMERICA: "남미",
-  ASIA_PACIFIC: "아시아·태평양",
-} as const;
-const PROCESS = { WASHED: "워시드", NATURAL: "내추럴" } as const;
-const DRINK = { HOT: "핫", ICE: "아이스" } as const;
-const PHASE = { BLOOM: "뜸들이기", SECOND: "2차", THIRD: "3차", FOURTH: "4차" } as const;
 
 const DEFAULTS: RecipeRequest = {
   doseG: 20,
@@ -54,7 +43,11 @@ const inputClass =
 
 export default function RecipePage() {
   const navigate = useNavigate();
+  // 원두 화면에서 원두를 지정해 넘어올 수 있습니다.
+  const preselectBeanId = (useLocation().state as { beanId?: number } | null)?.beanId;
+
   const [form, setForm] = useState<RecipeRequest>(DEFAULTS);
+  const [beans, setBeans] = useState<Bean[]>([]);
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -75,8 +68,54 @@ export default function RecipePage() {
     return () => clearTimeout(timer);
   }, [form]);
 
+  // 등록한 원두가 없어도 화면은 그대로 동작합니다. 목록은 선택지일 뿐입니다.
+  useEffect(() => {
+    api
+      .listBeans()
+      .then((res) => {
+        setBeans(res.items);
+        // 원두 화면에서 "이 원두로 레시피 만들기"로 넘어온 경우.
+        // 목록을 받은 뒤에야 원두의 지역·가공·로스팅을 알 수 있습니다.
+        const bean = res.items.find((b) => b.id === preselectBeanId);
+        if (bean) {
+          setForm((prev) => ({
+            ...prev,
+            beanId: bean.id,
+            region: bean.region,
+            process: bean.process,
+            roastLevel: bean.roastLevel,
+          }));
+        }
+      })
+      .catch(() => setBeans([]));
+  }, [preselectBeanId]);
+
   const update = <K extends keyof RecipeRequest>(key: K, value: RecipeRequest[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
+
+  /**
+   * 원두를 고르면 지역·가공·로스팅을 채워 넣습니다.
+   *
+   * beanId를 함께 보내는 이유는 두 가지입니다 — 서버가 원두 값을 기준으로 계산하고,
+   * 레시피에 원두가 연결돼 히스토리에 이름이 나옵니다.
+   */
+  const selectBean = (beanId: number | null) => {
+    const bean = beans.find((b) => b.id === beanId);
+    if (!bean) {
+      // 직접 입력으로 돌아갑니다. 조건은 건드리지 않고 연결만 끊습니다.
+      setForm((prev) => ({ ...prev, beanId: undefined }));
+      return;
+    }
+    setForm((prev) => ({
+      ...prev,
+      beanId: bean.id,
+      region: bean.region,
+      process: bean.process,
+      roastLevel: bean.roastLevel,
+    }));
+  };
+
+  const fromBean = form.beanId !== undefined;
 
   // Recharts는 x가 숫자여도 기본은 카테고리 축이라, 시간 간격을 살리려면 type="number"가 필요합니다.
   const chartData = recipe?.targetCurve.map(([sec, gram]) => ({ sec, gram })) ?? [];
@@ -84,6 +123,32 @@ export default function RecipePage() {
   return (
     <section className="space-y-5">
       <h1 className="text-lg font-semibold">레시피 생성</h1>
+
+      {beans.length > 0 && (
+        <div className="rounded border bg-white p-4">
+          <Field label="등록한 원두">
+            <select
+              className={inputClass}
+              value={form.beanId ?? ""}
+              onChange={(e) => selectBean(e.target.value ? Number(e.target.value) : null)}
+            >
+              <option value="">직접 입력</option>
+              {beans.map((bean) => (
+                <option key={bean.id} value={bean.id}>
+                  {bean.name}
+                  {bean.roaster ? ` · ${bean.roaster}` : ""}
+                </option>
+              ))}
+            </select>
+          </Field>
+          {form.beanId !== undefined && (
+            <p className="mt-2 text-xs text-slate-500">
+              생산 지역·가공 방식·로스팅은 <b>이 원두의 값을 따릅니다.</b> 다르게 지정하려면 직접
+              입력을 고르세요.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3 rounded border bg-white p-4 sm:grid-cols-3">
         <Field label={`원두량 ${form.doseG} g`}>
@@ -111,9 +176,12 @@ export default function RecipePage() {
           </select>
         </Field>
 
+        {/* 원두를 고른 경우 서버가 원두 값을 기준으로 계산합니다.
+            여기서 바꿔도 반영되지 않으므로, 바꿀 수 있는 것처럼 보이지 않게 잠급니다. */}
         <Field label="로스팅">
           <select
             className={inputClass}
+            disabled={fromBean}
             value={form.roastLevel}
             onChange={(e) => update("roastLevel", e.target.value as RecipeRequest["roastLevel"])}
           >
@@ -128,6 +196,7 @@ export default function RecipePage() {
         <Field label="생산 지역">
           <select
             className={inputClass}
+            disabled={fromBean}
             value={form.region}
             onChange={(e) => update("region", e.target.value as RecipeRequest["region"])}
           >
@@ -142,6 +211,7 @@ export default function RecipePage() {
         <Field label="가공 방식">
           <select
             className={inputClass}
+            disabled={fromBean}
             value={form.process}
             onChange={(e) => update("process", e.target.value as RecipeRequest["process"])}
           >
