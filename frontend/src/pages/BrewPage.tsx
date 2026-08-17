@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   CartesianGrid,
   Line,
   LineChart,
+  ReferenceDot,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -13,6 +14,7 @@ import {
 import type { ScaleStatus } from "../ble/types";
 import { useScale } from "../ble/useScale";
 import { api, type BrewResult, type DrinkType, type Recipe } from "../lib/api";
+import { nextPourTarget, pourTargets } from "../lib/pours";
 import type { Curve } from "../lib/rmse";
 import { useBrewSession } from "../lib/useBrewSession";
 
@@ -58,7 +60,8 @@ export default function BrewPage() {
   const navState = useLocation().state as BrewNavState | null;
   const recipe = navState?.recipe ?? null;
   const freeMode = navState?.free === true;
-  const target: Curve = recipe?.targetCurve ?? [];
+  // 렌더마다 새 배열이 되면 이 값을 쓰는 훅이 매번 다시 계산합니다.
+  const target: Curve = useMemo(() => recipe?.targetCurve ?? [], [recipe]);
 
   const scale = useScale();
   const brew = useBrewSession(scale.source, target);
@@ -92,9 +95,24 @@ export default function BrewPage() {
     }
   };
 
+  /**
+   * 추출 시작 — 저울 타이머도 함께 켭니다.
+   *
+   * 브루잉은 보통 저울 타이머를 누르며 시작합니다. 화면만 시작하면 저울에는 0초가 떠 있어
+   * **손은 저울을 보는데 시간이 안 가는** 상황이 됩니다. 두 시계를 하나로 맞춥니다.
+   *
+   * 타이머 명령이 실패해도 추출은 진행합니다. 곡선의 시간은 저울 타이머가 아니라
+   * 패킷 도착 시각으로 계산하므로, 표시가 안 맞을 뿐 기록은 정확합니다.
+   */
+  const startBrew = () => {
+    brew.start();
+    void scale.resetTimer().then(() => scale.startTimer());
+  };
+
   /** 종료와 동시에 저장합니다. 정확도는 서버가 다시 계산한 값을 씁니다. */
   const finishAndSave = async () => {
     brew.finish();
+    void scale.stopTimer();
     const record = brew.getRecord();
     if (!record) return;
 
@@ -116,7 +134,12 @@ export default function BrewPage() {
     setRecipeError(null);
     setAsRecipe((prev) => ({ ...prev, open: false }));
     brew.reset();
+    void scale.resetTimer();
   };
+
+  // "몇 초에 몇 g까지" — 곡선에서 직접 뽑습니다. 기록으로 만든 레시피에도 통합니다.
+  const targets = useMemo(() => pourTargets(target), [target]);
+  const upcoming = nextPourTarget(targets, brew.elapsedSec);
 
   const label = STATUS_LABEL[scale.status];
   const connected = scale.status === "CONNECTED";
@@ -177,6 +200,35 @@ export default function BrewPage() {
         )}
       </div>
 
+      {/* 추출 중에는 그래프를 읽을 여유가 없습니다. 다음에 맞출 값을 글자로 크게 둡니다. */}
+      {recipe && (running || paused) && (
+        <div className="rounded border border-slate-900 bg-slate-900 p-4 text-white">
+          {upcoming ? (
+            <>
+              <div className="text-xs text-slate-300">
+                {upcoming.index}번째 주수 — 여기까지 부으세요
+              </div>
+              <div className="mt-1 flex items-baseline gap-4">
+                <span className="font-mono text-3xl tabular-nums">{upcoming.gram} g</span>
+                <span className="text-sm text-slate-300">
+                  {upcoming.sec}초까지 · {Math.max(0, Math.ceil(upcoming.sec - brew.elapsedSec))}초
+                  남음
+                </span>
+              </div>
+              <div className="mt-1 text-xs text-slate-400">
+                지금 {brew.weightG.toFixed(0)} g ·{" "}
+                {Math.max(0, upcoming.gram - brew.weightG).toFixed(0)} g 더
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="text-xs text-slate-300">모두 부었습니다</div>
+              <div className="mt-1 text-lg">물이 다 빠질 때까지 기다리세요</div>
+            </>
+          )}
+        </div>
+      )}
+
       <div className="rounded border bg-white p-4">
         <div className="mb-2 flex items-center gap-4 text-xs text-slate-600">
           {recipe && (
@@ -230,6 +282,31 @@ export default function BrewPage() {
               connectNulls
               isAnimationActive={false}
             />
+
+            {/* 오르막이 끝나 평지로 꺾이는 지점 — "몇 초에 몇 g까지"를 곡선 위에 직접 적습니다.
+                아직 도달하지 않은 지점은 진하게, 지난 지점은 흐리게 둡니다. */}
+            {targets.map((point) => {
+              const passed = brew.elapsedSec >= point.sec;
+              return (
+                <ReferenceDot
+                  key={point.sec}
+                  x={point.sec}
+                  y={point.gram}
+                  r={4}
+                  fill={passed ? "#cbd5e1" : "#0f172a"}
+                  stroke="#fff"
+                  strokeWidth={1.5}
+                  label={{
+                    value: `${point.sec}초 · ${point.gram}g`,
+                    position: "top",
+                    offset: 8,
+                    fontSize: 11,
+                    fill: passed ? "#94a3b8" : "#0f172a",
+                    fontWeight: passed ? 400 : 600,
+                  }}
+                />
+              );
+            })}
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -244,7 +321,7 @@ export default function BrewPage() {
             저울 연결
           </button>
         ) : brew.phase === "IDLE" ? (
-          <button onClick={brew.start} className={btnPrimary}>
+          <button onClick={startBrew} className={btnPrimary}>
             추출 시작
           </button>
         ) : running ? (
