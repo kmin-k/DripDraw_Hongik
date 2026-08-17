@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   CartesianGrid,
@@ -108,6 +108,31 @@ export default function BrewPage() {
     brew.start();
     void scale.resetTimer().then(() => scale.startTimer());
   };
+
+  // 아래 자동 시작 effect가 쓰는 값들. 훅 목록에 넣기 좋게 따로 꺼내 둡니다.
+  const phaseNow = brew.phase;
+  const startSession = brew.start;
+
+  /**
+   * 저울에서 타이머를 켜면 추출도 시작합니다.
+   *
+   * 브루잉은 보통 저울 버튼을 누르며 시작합니다. 화면 버튼을 따로 눌러야 하면
+   * 손이 두 군데로 나뉘고, 두 시작 시각이 어긋나 곡선이 밀립니다.
+   *
+   * **상태가 아니라 전환을 봅니다.** "RUNNING이면 시작"으로 두면, 추출을 끝내고
+   * 다시 하기를 눌렀을 때 저울이 아직 RUNNING을 보내고 있어 곧바로 다시 시작해 버립니다.
+   *
+   * 앱에서 시작한 경우에도 저울이 `R`을 되돌려주지만, 그때는 이미 RUNNING이라 아무 일도 없습니다.
+   */
+  const lastTimerStateRef = useRef(scale.timerState);
+  useEffect(() => {
+    const previous = lastTimerStateRef.current;
+    lastTimerStateRef.current = scale.timerState;
+
+    if (scale.timerState === "RUNNING" && previous !== "RUNNING" && phaseNow === "IDLE") {
+      startSession();
+    }
+  }, [scale.timerState, phaseNow, startSession]);
 
   /** 종료와 동시에 저장합니다. 정확도는 서버가 다시 계산한 값을 씁니다. */
   const finishAndSave = async () => {

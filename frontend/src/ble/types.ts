@@ -14,6 +14,14 @@ export type ScaleStatus =
   /** 연결이 끊겨 자동 재연결을 시도하는 중. 시연 중 이 상태를 화면에 보여줘야 합니다. */
   | "RECONNECTING";
 
+/**
+ * 저울 타이머의 상태. 무게 패킷 index 11에 실려 옵니다 (2026-08-14 실측).
+ *
+ * 저울이 명령 문자와 같은 글자를 그대로 돌려줍니다 — `C`(리셋) / `R`(실행) / `S`(정지).
+ * 덕분에 **저울 버튼을 눌러 타이머를 켠 것도 앱이 알 수 있습니다.**
+ */
+export type TimerState = "RESET" | "RUNNING" | "STOPPED";
+
 export interface ScaleSource {
   readonly kind: "FELICITA_ARC";
   readonly status: ScaleStatus;
@@ -26,6 +34,8 @@ export interface ScaleSource {
   /** 구독 해제 함수를 돌려줍니다. React에서 언마운트 시 호출하세요. */
   onWeight(callback: (grams: number, timestampMs: number) => void): () => void;
   onStatusChange(callback: (status: ScaleStatus) => void): () => void;
+  /** 타이머 상태가 **바뀔 때만** 부릅니다. 저울 버튼을 눌러 켠 경우도 여기로 옵니다. */
+  onTimerState(callback: (state: TimerState) => void): () => void;
 
   tare(): Promise<void>;
   startTimer(): Promise<void>;

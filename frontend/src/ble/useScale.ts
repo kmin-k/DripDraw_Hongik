@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { FelicitaArcSource } from "./felicita";
-import type { ScaleStatus } from "./types";
+import type { ScaleStatus, TimerState } from "./types";
 
 /**
  * 저울을 React 화면에 붙이는 훅.
@@ -17,6 +17,8 @@ export function useScale() {
   const [weight, setWeight] = useState<number | null>(null);
   const [packetCount, setPacketCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  /** 저울이 알려주는 타이머 상태. 저울 버튼으로 켠 경우도 여기에 반영됩니다. */
+  const [timerState, setTimerState] = useState<TimerState | null>(null);
 
   useEffect(() => {
     const offWeight = source.onWeight((grams) => {
@@ -24,9 +26,11 @@ export function useScale() {
       setPacketCount((n) => n + 1);
     });
     const offStatus = source.onStatusChange(setStatus);
+    const offTimer = source.onTimerState(setTimerState);
     return () => {
       offWeight();
       offStatus();
+      offTimer();
     };
   }, [source]);
 
@@ -64,6 +68,7 @@ export function useScale() {
     weight,
     packetCount,
     error,
+    timerState,
     isSupported: typeof navigator !== "undefined" && !!navigator.bluetooth,
     connect,
     disconnect: () => run(() => source.disconnect()),

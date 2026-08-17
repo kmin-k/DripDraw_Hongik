@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseWeight } from "./parseWeight";
+import { parseTimerState, parseWeight } from "./parseWeight";
 
 /** 실물 검증(2026-08-06)에서 확인한 구조대로 18-byte 합성 패킷을 만듭니다. */
 function packet(sign: "+" | "-", digits: string): DataView {
@@ -35,12 +35,14 @@ describe("parseWeight", () => {
   });
 
   it("무게와 무관한 바이트가 달라도 결과가 같다", () => {
-    // index 11~15는 의미 미상이고 패킷마다 값이 다릅니다. 파서가 여기에 영향받으면 안 됩니다.
+    // index 11은 타이머 상태, 12·13·15는 여전히 미상이고 패킷마다 값이 다릅니다.
+    // 무게 파서가 이 자리들에 영향받으면 안 됩니다.
     const a = new Uint8Array([
       0x01, 0x02, 0x2b, 0x30, 0x33, 0x39, 0x38, 0x39, 0x30, 0x20, 0x67, 0x43, 0x68, 0x4d, 0x22,
       0x89, 0x0d, 0x0a,
     ]);
     const b = a.slice();
+    b[11] = 0x52; // 타이머 실행 중
     b[12] = 0x21;
     b[13] = 0x16;
     b[15] = 0x00;
@@ -99,5 +101,65 @@ describe("parseWeight", () => {
       0x88, 0x0d, 0x0a,
     ]);
     expect(parseWeight(new DataView(captured.buffer))).toBe(0);
+  });
+});
+
+describe("parseTimerState", () => {
+  /** index 11만 바꾼 무게 패킷. 타이머 상태는 무게와 같은 패킷에 실려 옵니다. */
+  function withTimerByte(byte: number): DataView {
+    const bytes = new Uint8Array([
+      0x01,
+      0x02,
+      0x2b,
+      0x30,
+      0x30,
+      0x30,
+      0x30,
+      0x30,
+      0x30,
+      0x20,
+      0x67,
+      byte,
+      0xe3,
+      0x4f,
+      0x22,
+      0x88,
+      0x0d,
+      0x0a,
+    ]);
+    return new DataView(bytes.buffer);
+  }
+
+  it("★ 저울이 명령 문자와 같은 글자를 돌려준다 (2026-08-14 실측)", () => {
+    // 이 대응이 있어서 **저울 버튼으로 켠 타이머도** 앱이 알 수 있습니다.
+    expect(parseTimerState(withTimerByte(0x43))).toBe("RESET"); // 'C'
+    expect(parseTimerState(withTimerByte(0x52))).toBe("RUNNING"); // 'R'
+    expect(parseTimerState(withTimerByte(0x53))).toBe("STOPPED"); // 'S'
+  });
+
+  it("★ 실물 캡처(타이머를 한 번도 안 돌린 상태)는 RESET이다", () => {
+    // 2026-08-06 캡처의 index 11이 0x43이었던 것이 이걸로 설명됩니다.
+    const captured = new Uint8Array([
+      0x01, 0x02, 0x2b, 0x30, 0x33, 0x39, 0x38, 0x39, 0x30, 0x20, 0x67, 0x43, 0x68, 0x4d, 0x22,
+      0x89, 0x0d, 0x0a,
+    ]);
+    expect(parseTimerState(new DataView(captured.buffer))).toBe("RESET");
+  });
+
+  it("모르는 값이면 null — 추측해서 상태를 만들지 않는다", () => {
+    expect(parseTimerState(withTimerByte(0x00))).toBeNull();
+    expect(parseTimerState(withTimerByte(0x99))).toBeNull();
+  });
+
+  it("무게 패킷이 아니면 null", () => {
+    const other = new Uint8Array(18).fill(0x20);
+    other[0] = 0x03;
+    other[11] = 0x52;
+    expect(parseTimerState(new DataView(other.buffer))).toBeNull();
+  });
+
+  it("패킷이 짧으면 null", () => {
+    const short = new Uint8Array([0x01, 0x02, 0x2b, 0x30]);
+    expect(parseTimerState(new DataView(short.buffer))).toBeNull();
   });
 });

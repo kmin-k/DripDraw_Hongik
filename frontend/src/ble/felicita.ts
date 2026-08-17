@@ -6,8 +6,8 @@
  * (docs/architecture.md "데이터 경로")
  */
 
-import { parseWeight } from "./parseWeight";
-import type { ScaleSource, ScaleStatus } from "./types";
+import { parseTimerState, parseWeight } from "./parseWeight";
+import type { ScaleSource, ScaleStatus, TimerState } from "./types";
 
 const SERVICE_UUID = "0000ffe0-0000-1000-8000-00805f9b34fb";
 const CHAR_UUID = "0000ffe1-0000-1000-8000-00805f9b34fb";
@@ -45,6 +45,10 @@ export class FelicitaArcSource implements ScaleSource {
 
   #weightListeners = new Set<(grams: number, timestampMs: number) => void>();
   #statusListeners = new Set<(status: ScaleStatus) => void>();
+  #timerListeners = new Set<(state: TimerState) => void>();
+
+  /** 마지막으로 알린 타이머 상태. 매 패킷마다 알리면 초당 9.3번 같은 값이 옵니다. */
+  #timerState: TimerState | null = null;
 
   /** 사용자가 직접 끊었는지. true면 재연결하지 않습니다. */
   #intentionalDisconnect = false;
@@ -70,6 +74,11 @@ export class FelicitaArcSource implements ScaleSource {
   onStatusChange(callback: (status: ScaleStatus) => void): () => void {
     this.#statusListeners.add(callback);
     return () => this.#statusListeners.delete(callback);
+  }
+
+  onTimerState(callback: (state: TimerState) => void): () => void {
+    this.#timerListeners.add(callback);
+    return () => this.#timerListeners.delete(callback);
   }
 
   async connect(): Promise<void> {
@@ -131,6 +140,14 @@ export class FelicitaArcSource implements ScaleSource {
   #handleNotification = (event: Event): void => {
     const value = (event.target as BluetoothRemoteGATTCharacteristic).value;
     if (!value) return;
+
+    // 타이머 상태는 무게와 같은 패킷에 들어 있습니다 (index 11).
+    // **사용자가 저울 버튼을 눌러 켠 경우도 여기로 들어옵니다.**
+    const timerState = parseTimerState(value);
+    if (timerState && timerState !== this.#timerState) {
+      this.#timerState = timerState;
+      for (const listener of this.#timerListeners) listener(timerState);
+    }
 
     const grams = parseWeight(value);
     // 저울은 같은 채널로 타이머·모드 패킷도 보냅니다. parseWeight가 헤더로 걸러 NaN을 냅니다.
