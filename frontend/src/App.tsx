@@ -1,4 +1,4 @@
-import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Link, NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import BeansPage from "./pages/BeansPage";
 import BrewDetailPage from "./pages/BrewDetailPage";
@@ -65,9 +65,17 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <header className="border-b bg-white">
-        <div className="mx-auto flex max-w-3xl items-center gap-2 px-4 py-3">
-          <span className="font-semibold">DripDraw</span>
-          <span className="text-xs text-slate-400">추출 재현성 가이드</span>
+        <div className="mx-auto flex max-w-3xl items-center px-4 py-3">
+          {/* 어느 화면에서든 홈으로 — 앱에서 로고를 누르면 첫 화면으로 가는 것이 기본 동작입니다. */}
+          <Link
+            to="/"
+            aria-label="홈으로"
+            className="flex items-center gap-2 rounded hover:opacity-70"
+          >
+            <span className="text-lg leading-none">☕</span>
+            <span className="font-semibold">DripDraw</span>
+            <span className="hidden text-xs text-slate-400 sm:inline">추출 재현성 가이드</span>
+          </Link>
         </div>
       </header>
 
