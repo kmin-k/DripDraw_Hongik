@@ -64,3 +64,21 @@ export function pourTargets(target: Curve): PourTarget[] {
 export function nextPourTarget(targets: PourTarget[], elapsedSec: number): PourTarget | null {
   return targets.find((t) => t.sec > elapsedSec) ?? null;
 }
+
+/**
+ * 마지막 주수 이후 물이 다 빠지는 지점 — 추출이 끝나는 시각과 최종 물량.
+ *
+ * 마지막 주수가 곡선의 끝이면(드립다운 구간이 없으면) null입니다.
+ * 그 경우 이미 주수 끝점에 물량이 적혀 있어 같은 자리에 두 번 적게 됩니다.
+ */
+export function brewEnd(target: Curve): { sec: number; gram: number } | null {
+  const points = target as readonly CurvePoint[];
+  const pours = pourTargets(points);
+  if (pours.length === 0) return null;
+
+  const last = points[points.length - 1];
+  const lastPour = pours[pours.length - 1];
+  if (last[0] <= lastPour.sec) return null;
+
+  return { sec: last[0], gram: last[1] };
+}

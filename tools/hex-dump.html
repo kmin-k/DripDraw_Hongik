@@ -164,7 +164,35 @@
 </div>
 
 <div class="panel">
-  <h2>7. 로그</h2>
+  <h2>7. 타이머 바이트 찾기</h2>
+
+  <p class="hint" style="margin-top:0">
+    저울 타이머가 돌면 <b>어딘가에 시간이 실려 옵니다.</b> 초 단위라면 1초마다 +1,
+    0.1초 단위라면 1초마다 +10씩 커지는 자리가 있습니다. 아래가 그 자리를 자동으로 찾습니다.
+  </p>
+
+  <ol class="hint" style="margin:8px 0 12px 18px">
+    <li>저울을 연결하고 <b>명령 <code>2</code>(weight+timer 모드)</b>를 한 번 보냅니다.</li>
+    <li>저울 타이머를 <b>정지·리셋</b>해 0으로 맞춥니다.</li>
+    <li>아래 <b>추적 시작</b>을 누릅니다.</li>
+    <li><b>저울의 타이머 버튼을 직접 누릅니다.</b> 20초 이상 그대로 둡니다.</li>
+    <li>표에서 <span class="b-ok">타이머 후보</span>로 표시된 자리를 확인합니다.</li>
+  </ol>
+
+  <button id="btnTrackStart" class="primary">추적 시작</button>
+  <button id="btnTrackStop" disabled>추적 정지</button>
+  <span class="hint" id="trackStatus" style="margin-left:8px">대기 중</span>
+
+  <div id="trackResult" style="margin-top:12px"></div>
+
+  <div style="margin-top:12px">
+    <button id="btnCopyTrack">추적 결과 복사</button>
+    <span class="hint">찾은 자리를 <code>docs/scale-protocol.md</code>에 적어 두세요.</span>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>8. 로그</h2>
   <button id="btnPause">일시정지</button>
   <button id="btnDownload" class="primary">로그 저장 (.txt)</button>
   <button id="btnClear">비우기</button>
@@ -195,7 +223,7 @@ const MAX_RECORDS = 30000; // 메모리 상한 (약 50분). 넘으면 오래된 
 let device = null, characteristic = null;
 let records = [];        // {n, t, dt, bytes:[], hex, ascii, parsed}
 let byteStats = [];      // index별 {values:Set, first, last}
-let t0 = 0, lastT = 0, simTimer = null, prevBytes = null, paused = false;
+let t0 = 0, lastT = 0, simTimer = null, prevBytes = null, paused = false, simStartedAt = 0;
 let pendingRows = [];      // 화면에 아직 안 그린 패킷
 let renderTimer = null;
 let lengthSet = new Set(); // 패킷 길이 종류. 매번 전체를 훑지 않고 누적합니다.
@@ -372,6 +400,7 @@ function onPacket(bytes) {
 
   lengthSet.add(bytes.length);
   updateByteStats(bytes);          // 데이터만 갱신. 그리기는 아래에서 한 번에.
+  trackPacket(bytes);
   if (!paused) pendingRows.push(rec);
   scheduleRender();
 }
@@ -392,6 +421,7 @@ function flushRender() {
   renderByteMap();
   renderPacketText(last);
   updateStats();
+  renderTrackResult();
 
   // 표를 실시간으로 그리는 것이 가장 비쌉니다(행마다 브라우저가 표 전체를 다시 배치).
   // 기록은 records[]에 이미 다 들어갔으므로, 화면 표시는 켜져 있을 때만 합니다.
@@ -512,10 +542,108 @@ function resetCapture() {
   ["stCount", "stLen", "stHz", "stGap"].forEach(id => $(id).textContent = id === "stCount" ? "0" : "—");
 }
 
+/* ---------- 타이머 바이트 찾기 ----------
+ *
+ * 타이머가 실려 온다면 어떤 자리가 "시간에 비례해 일정하게 커집니다".
+ * 초 단위면 1초에 +1, 0.1초 단위면 1초에 +10입니다.
+ *
+ * 그래서 각 자리마다 (증가량 ÷ 경과 시간)을 재고, 그 값이 1이나 10에 가까우면 후보로 봅니다.
+ * 무게처럼 사람이 흔드는 값은 오르내리므로 "계속 커지는가"를 함께 봅니다.
+ */
+let tracking = null;   // { startedAt, first: number[], samples: [] }
+
+const TIMER_RATES = [
+  { perSec: 1, label: "초 단위 (1초에 +1)" },
+  { perSec: 10, label: "0.1초 단위 (1초에 +10)" },
+  { perSec: 100, label: "0.01초 단위 (1초에 +100)" },
+];
+/** 관측 비율이 기대치의 ±15% 안이면 같은 것으로 봅니다. 패킷 주기가 일정하지 않아 여유가 필요합니다. */
+const RATE_TOLERANCE = 0.15;
+
+function trackStart() {
+  tracking = { startedAt: performance.now(), first: null, last: null, everDecreased: [] };
+  $("btnTrackStart").disabled = true;
+  $("btnTrackStop").disabled = false;
+  $("trackStatus").textContent = "추적 중 — 저울 타이머 버튼을 누르세요";
+  $("trackResult").innerHTML = "";
+}
+
+function trackStop() {
+  $("btnTrackStart").disabled = false;
+  $("btnTrackStop").disabled = true;
+  $("trackStatus").textContent = tracking ? "정지 — 결과는 아래 그대로 남습니다" : "대기 중";
+  tracking = null;
+}
+
+function trackPacket(bytes) {
+  if (!tracking) return;
+  if (!tracking.first) {
+    tracking.first = Array.from(bytes);
+    tracking.everDecreased = new Array(bytes.length).fill(false);
+    tracking.prev = Array.from(bytes);
+    return;
+  }
+  for (let i = 0; i < bytes.length; i++) {
+    // 되감김(255 → 0)은 감소로 치지 않습니다. 한 바이트 카운터는 반드시 넘칩니다.
+    const dropped = bytes[i] < tracking.prev[i] && tracking.prev[i] - bytes[i] < 200;
+    if (dropped) tracking.everDecreased[i] = true;
+  }
+  tracking.prev = Array.from(bytes);
+  tracking.last = Array.from(bytes);
+  tracking.elapsedSec = (performance.now() - tracking.startedAt) / 1000;
+}
+
+function renderTrackResult() {
+  if (!tracking || !tracking.last || tracking.elapsedSec < 3) return;
+
+  const rows = [];
+  for (let i = 0; i < tracking.last.length; i++) {
+    // 되감김을 고려한 총 증가량. 한 바퀴(256) 이상 돌았을 수 있습니다.
+    let delta = tracking.last[i] - tracking.first[i];
+    while (delta < 0) delta += 256;
+    if (delta === 0) continue;
+
+    const perSec = delta / tracking.elapsedSec;
+    const match = TIMER_RATES.find(r => Math.abs(perSec - r.perSec) / r.perSec <= RATE_TOLERANCE);
+    // 계속 커지기만 하는 자리라야 카운터입니다. 무게는 오르내립니다.
+    const monotonic = !tracking.everDecreased[i];
+
+    rows.push({ i, delta, perSec, match, monotonic });
+  }
+
+  rows.sort((a, b) => (b.match ? 1 : 0) - (a.match ? 1 : 0) || a.i - b.i);
+
+  const body = rows.map(r => {
+    const verdict = r.match && r.monotonic
+      ? `<span class="b-ok">타이머 후보 — ${r.match.label}</span>`
+      : r.monotonic ? `<span class="dim">계속 증가하지만 속도가 안 맞음</span>`
+      : `<span class="dim">오르내림 (무게·체크섬 추정)</span>`;
+    return `<tr><td class="mono">index ${r.i}</td>
+      <td class="mono">+${r.delta}</td>
+      <td class="mono">${r.perSec.toFixed(1)}/초</td>
+      <td>${verdict}</td></tr>`;
+  }).join("");
+
+  $("trackResult").innerHTML = rows.length
+    ? `<div class="hint">경과 ${tracking.elapsedSec.toFixed(0)}초 · 변한 자리 ${rows.length}개</div>
+       <table style="margin-top:6px"><thead><tr>
+         <th>자리</th><th>증가량</th><th>속도</th><th>판정</th></tr></thead>
+       <tbody>${body}</tbody></table>`
+    : `<div class="hint">아직 변한 자리가 없습니다. 저울 타이머가 돌고 있는지 확인하세요.</div>`;
+}
+
+function copyTrackResult() {
+  const text = $("trackResult").innerText.trim();
+  if (!text) return;
+  navigator.clipboard?.writeText(text);
+  $("trackStatus").textContent = "결과를 복사했습니다";
+}
+
 /* ---------- 시뮬레이션 (저울 없이 페이지 검증) ---------- */
 function startSim() {
   resetCapture();
   setStatus("시뮬레이션 실행 중 — 실제 저울이 아닙니다", "b-warn");
+  simStartedAt = Date.now();
   let w = 0, dir = 1;
   simTimer = setInterval(() => {
     w += dir * (Math.random() * 3);
@@ -528,6 +656,10 @@ function startSim() {
     bytes[2] = v < 0 ? 0x2d : 0x2b;
     for (let i = 0; i < 6; i++) bytes[3 + i] = digits.charCodeAt(i);
     for (let i = 9; i < 18; i++) bytes[i] = 0x20;
+    // "타이머 바이트 찾기" 화면을 저울 없이 시험하기 위한 가짜 타이머입니다.
+    // index 12는 1초에 +1, index 15는 사람 손처럼 오르내립니다(후보로 잡히면 안 됩니다).
+    bytes[12] = Math.floor((Date.now() - simStartedAt) / 1000) % 256;
+    bytes[15] = Math.floor(Math.random() * 256);
     onPacket(bytes);
   }, 100);
   $("btnSim").textContent = "시뮬레이션 정지";
@@ -576,6 +708,10 @@ $("btnDisconnect").onclick = disconnect;
 $("btnExplore").onclick = exploreGatt;
 $("btnDownload").onclick = download;
 $("btnClear").onclick = resetCapture;
+$("btnTrackStart").onclick = trackStart;
+$("btnTrackStop").onclick = trackStop;
+$("btnCopyTrack").onclick = copyTrackResult;
+
 $("btnPause").onclick = () => {
   paused = !paused;
   $("btnPause").textContent = paused ? "재개" : "일시정지";

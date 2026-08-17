@@ -14,7 +14,7 @@ import {
 import type { ScaleStatus } from "../ble/types";
 import { useScale } from "../ble/useScale";
 import { api, type BrewResult, type DrinkType, type Recipe } from "../lib/api";
-import { nextPourTarget, pourTargets } from "../lib/pours";
+import { brewEnd, nextPourTarget, pourTargets } from "../lib/pours";
 import type { Curve } from "../lib/rmse";
 import { useBrewSession } from "../lib/useBrewSession";
 
@@ -139,6 +139,7 @@ export default function BrewPage() {
 
   // "몇 초에 몇 g까지" — 곡선에서 직접 뽑습니다. 기록으로 만든 레시피에도 통합니다.
   const targets = useMemo(() => pourTargets(target), [target]);
+  const finishPoint = useMemo(() => brewEnd(target), [target]);
   const upcoming = nextPourTarget(targets, brew.elapsedSec);
 
   const label = STATUS_LABEL[scale.status];
@@ -227,6 +228,12 @@ export default function BrewPage() {
             <>
               <div className="text-xs text-slate-300">모두 부었습니다</div>
               <div className="mt-1 text-lg">물이 다 빠질 때까지 기다리세요</div>
+              {/* 남은 시간이 없으면 언제까지 기다려야 하는지 알 수 없습니다. */}
+              {finishPoint && brew.elapsedSec < finishPoint.sec && (
+                <div className="mt-1 text-sm text-slate-300">
+                  {finishPoint.sec}초까지 · {Math.ceil(finishPoint.sec - brew.elapsedSec)}초 남음
+                </div>
+              )}
             </>
           )}
         </div>
@@ -326,6 +333,27 @@ export default function BrewPage() {
                 }}
               />,
             ])}
+
+            {/* 물이 다 빠지는 지점 — 추출이 끝나는 시각과 최종 물량.
+                주수 끝점과 같은 물량이라도, 여기까지가 한 잔이라는 것을 보여줍니다. */}
+            {finishPoint && (
+              <ReferenceDot
+                x={finishPoint.sec}
+                y={finishPoint.gram}
+                r={4}
+                fill={brew.elapsedSec >= finishPoint.sec ? "#cbd5e1" : "#0f172a"}
+                stroke="#fff"
+                strokeWidth={1.5}
+                label={{
+                  value: `완성 ${finishPoint.gram} g`,
+                  position: "top",
+                  offset: 8,
+                  fontSize: 12,
+                  fill: brew.elapsedSec >= finishPoint.sec ? "#94a3b8" : "#0f172a",
+                  fontWeight: brew.elapsedSec >= finishPoint.sec ? 400 : 600,
+                }}
+              />
+            )}
           </LineChart>
         </ResponsiveContainer>
       </div>

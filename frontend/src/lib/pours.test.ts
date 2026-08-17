@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { nextPourTarget, pourTargets } from "./pours";
+import { brewEnd, nextPourTarget, pourTargets } from "./pours";
 
 /** 기준값 레시피의 목표 곡선 (20g / 핫 / 라이트 / 아프리카 / 워시드 / D50 950μm) */
 const GOLDEN = [
@@ -76,6 +76,37 @@ describe("pourTargets", () => {
         [10, 0],
       ]),
     ).toEqual([]);
+  });
+});
+
+describe("brewEnd", () => {
+  it("드립다운이 끝나는 시각과 최종 물량을 돌려준다", () => {
+    expect(brewEnd(GOLDEN)).toEqual({ sec: 165, gram: 300 });
+  });
+
+  it("드립다운 구간이 없으면 null", () => {
+    // 마지막 주수 끝점에 이미 물량이 적혀 있어 같은 자리에 두 번 적게 됩니다.
+    const noDrawdown = [
+      [0, 0],
+      [10, 56],
+      [35, 56],
+      [51, 154],
+    ] as const;
+
+    expect(brewEnd(noDrawdown)).toBeNull();
+  });
+
+  it("목표가 없으면 null", () => {
+    expect(brewEnd([])).toBeNull();
+  });
+
+  it("한 번도 붓지 않는 곡선은 null", () => {
+    expect(
+      brewEnd([
+        [0, 0],
+        [60, 0],
+      ]),
+    ).toBeNull();
   });
 });
 
