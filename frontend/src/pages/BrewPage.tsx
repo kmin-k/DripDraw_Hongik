@@ -206,13 +206,16 @@ export default function BrewPage() {
           {upcoming ? (
             <>
               <div className="text-xs text-slate-300">
-                {upcoming.index}번째 주수 — 여기까지 부으세요
+                {upcoming.index}번째 주수 —{" "}
+                {brew.elapsedSec < upcoming.startSec ? "곧 시작합니다" : "여기까지 부으세요"}
               </div>
               <div className="mt-1 flex items-baseline gap-4">
                 <span className="font-mono text-3xl tabular-nums">{upcoming.gram} g</span>
+                {/* 아직 시작 전이면 "언제 붓기 시작하는지", 붓는 중이면 "언제까지"가 궁금합니다. */}
                 <span className="text-sm text-slate-300">
-                  {upcoming.sec}초까지 · {Math.max(0, Math.ceil(upcoming.sec - brew.elapsedSec))}초
-                  남음
+                  {brew.elapsedSec < upcoming.startSec
+                    ? `${upcoming.startSec}초에 시작 · ${Math.ceil(upcoming.startSec - brew.elapsedSec)}초 뒤`
+                    : `${upcoming.sec}초까지 · ${Math.max(0, Math.ceil(upcoming.sec - brew.elapsedSec))}초 남음`}
                 </span>
               </div>
               <div className="mt-1 text-xs text-slate-400">
@@ -283,30 +286,46 @@ export default function BrewPage() {
               isAnimationActive={false}
             />
 
-            {/* 오르막이 끝나 평지로 꺾이는 지점 — "몇 초에 몇 g까지"를 곡선 위에 직접 적습니다.
-                아직 도달하지 않은 지점은 진하게, 지난 지점은 흐리게 둡니다. */}
-            {targets.map((point) => {
-              const passed = brew.elapsedSec >= point.sec;
-              return (
-                <ReferenceDot
-                  key={point.sec}
-                  x={point.sec}
-                  y={point.gram}
-                  r={4}
-                  fill={passed ? "#cbd5e1" : "#0f172a"}
-                  stroke="#fff"
-                  strokeWidth={1.5}
-                  label={{
-                    value: `${point.sec}초 · ${point.gram}g`,
-                    position: "top",
-                    offset: 8,
-                    fontSize: 11,
-                    fill: passed ? "#94a3b8" : "#0f172a",
-                    fontWeight: passed ? 400 : 600,
-                  }}
-                />
-              );
-            })}
+            {/* 주수마다 두 지점을 찍습니다.
+                **시작에는 시간**(언제 붓기 시작하는지), **끝에는 물량**(얼마까지 붓는지).
+                한 점에 둘 다 적으면 글자가 길어져 옆 점과 겹칩니다.
+                아직 지나지 않은 지점은 진하게, 지난 지점은 흐리게 둡니다. */}
+            {targets.flatMap((pour) => [
+              <ReferenceDot
+                key={`start-${pour.startSec}`}
+                x={pour.startSec}
+                y={pour.startGram}
+                r={3}
+                fill={brew.elapsedSec >= pour.startSec ? "#cbd5e1" : "#64748b"}
+                stroke="#fff"
+                strokeWidth={1.5}
+                label={{
+                  value: `${pour.startSec}초`,
+                  // 시작점은 아래에 둡니다. 위에 두면 직전 주수의 물량 표시와 겹칩니다.
+                  position: "bottom",
+                  offset: 8,
+                  fontSize: 11,
+                  fill: brew.elapsedSec >= pour.startSec ? "#94a3b8" : "#475569",
+                }}
+              />,
+              <ReferenceDot
+                key={`end-${pour.sec}`}
+                x={pour.sec}
+                y={pour.gram}
+                r={4}
+                fill={brew.elapsedSec >= pour.sec ? "#cbd5e1" : "#0f172a"}
+                stroke="#fff"
+                strokeWidth={1.5}
+                label={{
+                  value: `${pour.gram} g`,
+                  position: "top",
+                  offset: 8,
+                  fontSize: 12,
+                  fill: brew.elapsedSec >= pour.sec ? "#94a3b8" : "#0f172a",
+                  fontWeight: brew.elapsedSec >= pour.sec ? 400 : 600,
+                }}
+              />,
+            ])}
           </LineChart>
         </ResponsiveContainer>
       </div>

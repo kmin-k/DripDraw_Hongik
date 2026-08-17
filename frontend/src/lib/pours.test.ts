@@ -16,30 +16,35 @@ const GOLDEN = [
 ] as const;
 
 describe("pourTargets", () => {
-  it("주수마다 '여기까지' 지점을 하나씩 찾는다", () => {
-    const targets = pourTargets(GOLDEN);
-
-    expect(targets).toEqual([
-      { sec: 10, gram: 56, index: 1 },
-      { sec: 51, gram: 154, index: 2 },
-      { sec: 84, gram: 235, index: 3 },
-      { sec: 116, gram: 300, index: 4 },
+  it("주수마다 시작과 끝을 함께 찾는다", () => {
+    expect(pourTargets(GOLDEN)).toEqual([
+      { startSec: 0, startGram: 0, sec: 10, gram: 56, index: 1 },
+      { startSec: 35, startGram: 56, sec: 51, gram: 154, index: 2 },
+      { startSec: 70, startGram: 154, sec: 84, gram: 235, index: 3 },
+      { startSec: 105, startGram: 235, sec: 116, gram: 300, index: 4 },
     ]);
   });
 
-  it("오르막 도중의 점은 넣지 않는다", () => {
-    // 계속 오르는 구간에서는 "여기까지"라고 말할 지점이 없습니다.
-    const climbing = [
+  it("마지막 주수의 끝도 빠뜨리지 않는다", () => {
+    // 드립다운으로 이어지는 마지막 주수가 누락되기 쉽습니다.
+    expect(pourTargets(GOLDEN).at(-1)).toMatchObject({ sec: 116, gram: 300 });
+  });
+
+  it("오르막이 여러 점에 걸쳐도 한 번의 주수로 본다", () => {
+    // 점이 더 있다고 주수 횟수가 늘어나는 것은 아닙니다.
+    const stepped = [
       [0, 0],
       [5, 30],
       [10, 60],
-      [20, 60],
+      [30, 60],
     ] as const;
 
-    expect(pourTargets(climbing)).toEqual([{ sec: 10, gram: 60, index: 1 }]);
+    expect(pourTargets(stepped)).toEqual([
+      { startSec: 0, startGram: 0, sec: 10, gram: 60, index: 1 },
+    ]);
   });
 
-  it("드립다운 없이 끝나는 곡선은 마지막 점을 쓴다", () => {
+  it("드립다운 없이 끝나는 곡선도 마지막 주수를 잡는다", () => {
     const noDrawdown = [
       [0, 0],
       [10, 56],
@@ -47,8 +52,16 @@ describe("pourTargets", () => {
       [51, 154],
     ] as const;
 
-    const targets = pourTargets(noDrawdown);
-    expect(targets.at(-1)).toEqual({ sec: 51, gram: 154, index: 2 });
+    expect(pourTargets(noDrawdown).at(-1)).toMatchObject({
+      startSec: 35,
+      sec: 51,
+      gram: 154,
+    });
+  });
+
+  it("붓기 시작 시점의 누적 물량은 직전 주수까지의 합이다", () => {
+    const [, second] = pourTargets(GOLDEN);
+    expect(second.startGram).toBe(56);
   });
 
   it("목표가 없으면 빈 배열", () => {
@@ -69,13 +82,13 @@ describe("pourTargets", () => {
 describe("nextPourTarget", () => {
   const targets = pourTargets(GOLDEN);
 
-  it("아직 안 지난 첫 지점을 알려준다", () => {
+  it("아직 끝나지 않은 첫 주수를 알려준다", () => {
     expect(nextPourTarget(targets, 0)?.sec).toBe(10);
     expect(nextPourTarget(targets, 30)?.sec).toBe(51);
     expect(nextPourTarget(targets, 90)?.sec).toBe(116);
   });
 
-  it("지점에 정확히 도달하면 다음 지점으로 넘어간다", () => {
+  it("끝나는 시각에 도달하면 다음 주수로 넘어간다", () => {
     expect(nextPourTarget(targets, 10)?.sec).toBe(51);
   });
 
