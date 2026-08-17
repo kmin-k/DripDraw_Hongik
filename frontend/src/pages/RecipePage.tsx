@@ -12,6 +12,7 @@ import {
 
 import { api, type Bean, type Recipe, type RecipeRequest } from "../lib/api";
 import { DRINK, PHASE, PROCESS, REGION, ROAST } from "../lib/labels";
+import { loadSettings } from "../lib/settings";
 
 /**
  * 데모 시나리오 2번 — 입력을 바꾸면 Target Curve가 즉시 달라지는 화면.
@@ -20,14 +21,18 @@ import { DRINK, PHASE, PROCESS, REGION, ROAST } from "../lib/labels";
  * 규칙을 프론트에 복제하면 서버와 반드시 어긋나기 때문입니다 (docs/rule-table.md).
  */
 
-const DEFAULTS: RecipeRequest = {
-  doseG: 20,
-  drinkType: "HOT",
-  roastLevel: "LIGHT",
-  region: "AFRICA",
-  process: "WASHED",
-  d50Um: 950,
-};
+/** 원두량·음용 방식은 설정에 저장된 값에서 시작합니다 (온보딩에서 정합니다). */
+function initialForm(): RecipeRequest {
+  const settings = loadSettings();
+  return {
+    doseG: settings.doseG,
+    drinkType: settings.drinkType,
+    roastLevel: "LIGHT",
+    region: "AFRICA",
+    process: "WASHED",
+    d50Um: 950,
+  };
+}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -46,7 +51,7 @@ export default function RecipePage() {
   // 원두 화면에서 원두를 지정해 넘어올 수 있습니다.
   const preselectBeanId = (useLocation().state as { beanId?: number } | null)?.beanId;
 
-  const [form, setForm] = useState<RecipeRequest>(DEFAULTS);
+  const [form, setForm] = useState<RecipeRequest>(initialForm);
   const [beans, setBeans] = useState<Bean[]>([]);
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [error, setError] = useState<string | null>(null);
