@@ -224,6 +224,8 @@ let device = null, characteristic = null;
 let records = [];        // {n, t, dt, bytes:[], hex, ascii, parsed}
 let byteStats = [];      // index별 {values:Set, first, last}
 let t0 = 0, lastT = 0, simTimer = null, prevBytes = null, paused = false, simStartedAt = 0;
+/** 시뮬레이션에서 가짜 타이머가 늦게 도는 시간. 사람이 저울 버튼을 누르기까지의 지연을 흉내냅니다. */
+const SIM_TIMER_DELAY_SEC = 8;
 let pendingRows = [];      // 화면에 아직 안 그린 패킷
 let renderTimer = null;
 let lengthSet = new Set(); // 패킷 길이 종류. 매번 전체를 훑지 않고 누적합니다.
@@ -547,21 +549,34 @@ function resetCapture() {
  * 타이머가 실려 온다면 어떤 자리가 "시간에 비례해 일정하게 커집니다".
  * 초 단위면 1초에 +1, 0.1초 단위면 1초에 +10입니다.
  *
- * 그래서 각 자리마다 (증가량 ÷ 경과 시간)을 재고, 그 값이 1이나 10에 가까우면 후보로 봅니다.
- * 무게처럼 사람이 흔드는 값은 오르내리므로 "계속 커지는가"를 함께 봅니다.
+ * **속도는 "추적 시작"이 아니라 "그 자리가 처음 변한 시각"부터 잽니다.**
+ * 추적을 누르고 저울 버튼을 누르기까지 몇 초가 걸리는데, 그 시간을 분모에 넣으면
+ * 실제로는 1/초인 자리가 0.5/초처럼 보여 후보에서 빠집니다.
+ *
+ * 무게처럼 사람이 흔드는 값은 오르내리므로 "계속 커지기만 하는가"도 함께 봅니다.
  */
-let tracking = null;   // { startedAt, first: number[], samples: [] }
+let tracking = null;
 
 const TIMER_RATES = [
   { perSec: 1, label: "초 단위 (1초에 +1)" },
   { perSec: 10, label: "0.1초 단위 (1초에 +10)" },
   { perSec: 100, label: "0.01초 단위 (1초에 +100)" },
 ];
-/** 관측 비율이 기대치의 ±15% 안이면 같은 것으로 봅니다. 패킷 주기가 일정하지 않아 여유가 필요합니다. */
-const RATE_TOLERANCE = 0.15;
+/** 관측 비율이 기대치의 ±20% 안이면 같은 것으로 봅니다. 패킷 주기가 일정하지 않아 여유가 필요합니다. */
+const RATE_TOLERANCE = 0.2;
+/** 이보다 큰 한 번의 변화는 되감김이나 다른 값으로 봅니다. 카운터는 조금씩 오릅니다. */
+const MAX_STEP = 32;
+
+/** 문서에 이미 확인된 자리. 후보에서 헷갈리지 않도록 이름을 붙여 둡니다. */
+const KNOWN_BYTES = {
+  0: "헤더", 1: "헤더", 2: "무게 부호",
+  3: "무게 숫자", 4: "무게 숫자", 5: "무게 숫자",
+  6: "무게 숫자", 7: "무게 숫자", 8: "무게 숫자",
+  9: "단위 공백", 10: "단위 g", 16: "CR", 17: "LF",
+};
 
 function trackStart() {
-  tracking = { startedAt: performance.now(), first: null, last: null, everDecreased: [] };
+  tracking = { prev: null, bytes: [] };
   $("btnTrackStart").disabled = true;
   $("btnTrackStop").disabled = false;
   $("trackStatus").textContent = "추적 중 — 저울 타이머 버튼을 누르세요";
@@ -577,58 +592,80 @@ function trackStop() {
 
 function trackPacket(bytes) {
   if (!tracking) return;
-  if (!tracking.first) {
-    tracking.first = Array.from(bytes);
-    tracking.everDecreased = new Array(bytes.length).fill(false);
+  const now = performance.now();
+
+  if (!tracking.prev) {
     tracking.prev = Array.from(bytes);
+    tracking.bytes = Array.from(bytes, () => ({
+      total: 0, firstChangeAt: null, lastChangeAt: null, decreased: false, jumped: false,
+    }));
     return;
   }
+
   for (let i = 0; i < bytes.length; i++) {
-    // 되감김(255 → 0)은 감소로 치지 않습니다. 한 바이트 카운터는 반드시 넘칩니다.
-    const dropped = bytes[i] < tracking.prev[i] && tracking.prev[i] - bytes[i] < 200;
-    if (dropped) tracking.everDecreased[i] = true;
+    const slot = tracking.bytes[i];
+    if (!slot) continue;
+
+    let step = bytes[i] - tracking.prev[i];
+    if (step === 0) continue;
+
+    // 255 → 0처럼 한 바퀴 돈 경우. 한 바이트 카운터는 반드시 넘칩니다.
+    if (step < -MAX_STEP) step += 256;
+    else if (step < 0) slot.decreased = true;      // 진짜로 줄었습니다. 카운터가 아닙니다.
+    else if (step > MAX_STEP) slot.jumped = true;  // 한 번에 크게 뜁니다. 무게·체크섬 쪽입니다.
+
+    if (step > 0) slot.total += step;
+    if (slot.firstChangeAt === null) slot.firstChangeAt = now;
+    slot.lastChangeAt = now;
   }
+
   tracking.prev = Array.from(bytes);
-  tracking.last = Array.from(bytes);
-  tracking.elapsedSec = (performance.now() - tracking.startedAt) / 1000;
+  tracking.now = now;
 }
 
 function renderTrackResult() {
-  if (!tracking || !tracking.last || tracking.elapsedSec < 3) return;
+  if (!tracking || !tracking.prev) return;
 
   const rows = [];
-  for (let i = 0; i < tracking.last.length; i++) {
-    // 되감김을 고려한 총 증가량. 한 바퀴(256) 이상 돌았을 수 있습니다.
-    let delta = tracking.last[i] - tracking.first[i];
-    while (delta < 0) delta += 256;
-    if (delta === 0) continue;
+  tracking.bytes.forEach((slot, i) => {
+    if (slot.total === 0 || slot.firstChangeAt === null) return;
 
-    const perSec = delta / tracking.elapsedSec;
-    const match = TIMER_RATES.find(r => Math.abs(perSec - r.perSec) / r.perSec <= RATE_TOLERANCE);
-    // 계속 커지기만 하는 자리라야 카운터입니다. 무게는 오르내립니다.
-    const monotonic = !tracking.everDecreased[i];
+    // **변화가 시작된 시점부터** 잽니다. 버튼을 누르기까지의 대기 시간을 빼기 위해서입니다.
+    const spanSec = (tracking.now - slot.firstChangeAt) / 1000;
+    if (spanSec < 3) return;   // 너무 짧으면 속도를 신뢰할 수 없습니다.
 
-    rows.push({ i, delta, perSec, match, monotonic });
-  }
+    const perSec = slot.total / spanSec;
+    // 이미 정체가 밝혀진 자리는 속도가 우연히 맞아도 후보로 올리지 않습니다.
+    const steady = !slot.decreased && !slot.jumped && !KNOWN_BYTES[i];
+    const match = steady
+      ? TIMER_RATES.find(r => Math.abs(perSec - r.perSec) / r.perSec <= RATE_TOLERANCE)
+      : null;
+
+    rows.push({ i, slot, spanSec, perSec, match, steady, value: tracking.prev[i] });
+  });
 
   rows.sort((a, b) => (b.match ? 1 : 0) - (a.match ? 1 : 0) || a.i - b.i);
 
   const body = rows.map(r => {
-    const verdict = r.match && r.monotonic
+    const known = KNOWN_BYTES[r.i];
+    const verdict = r.match
       ? `<span class="b-ok">타이머 후보 — ${r.match.label}</span>`
-      : r.monotonic ? `<span class="dim">계속 증가하지만 속도가 안 맞음</span>`
-      : `<span class="dim">오르내림 (무게·체크섬 추정)</span>`;
+      : known ? `<span class="dim">${known} (이미 확인된 자리)</span>`
+      : r.steady ? `<span class="dim">일정하게 증가하지만 속도가 안 맞음</span>`
+      : `<span class="dim">오르내리거나 크게 뜀 (무게·체크섬 추정)</span>`;
     return `<tr><td class="mono">index ${r.i}</td>
-      <td class="mono">+${r.delta}</td>
-      <td class="mono">${r.perSec.toFixed(1)}/초</td>
+      <td class="mono">${r.value}</td>
+      <td class="mono">+${r.slot.total}</td>
+      <td class="mono">${r.spanSec.toFixed(0)}초</td>
+      <td class="mono">${r.perSec.toFixed(2)}/초</td>
       <td>${verdict}</td></tr>`;
   }).join("");
 
   $("trackResult").innerHTML = rows.length
-    ? `<div class="hint">경과 ${tracking.elapsedSec.toFixed(0)}초 · 변한 자리 ${rows.length}개</div>
+    ? `<div class="hint">변한 자리 ${rows.length}개 · 속도는 <b>그 자리가 처음 변한 시각부터</b> 잽니다</div>
        <table style="margin-top:6px"><thead><tr>
-         <th>자리</th><th>증가량</th><th>속도</th><th>판정</th></tr></thead>
-       <tbody>${body}</tbody></table>`
+         <th>자리</th><th>현재값</th><th>증가량</th><th>변화 구간</th><th>속도</th><th>판정</th>
+       </tr></thead><tbody>${body}</tbody></table>`
     : `<div class="hint">아직 변한 자리가 없습니다. 저울 타이머가 돌고 있는지 확인하세요.</div>`;
 }
 
@@ -658,7 +695,11 @@ function startSim() {
     for (let i = 9; i < 18; i++) bytes[i] = 0x20;
     // "타이머 바이트 찾기" 화면을 저울 없이 시험하기 위한 가짜 타이머입니다.
     // index 12는 1초에 +1, index 15는 사람 손처럼 오르내립니다(후보로 잡히면 안 됩니다).
-    bytes[12] = Math.floor((Date.now() - simStartedAt) / 1000) % 256;
+    //
+    // **타이머는 시뮬레이션 시작 8초 뒤에야 돕니다.** 실제로도 추적을 누르고 저울로 손을
+    // 옮겨 버튼을 누르기까지 시간이 걸립니다. 그 지연을 빼고 속도를 재는지 확인하려는 것입니다.
+    const timerSec = Math.max(0, (Date.now() - simStartedAt) / 1000 - SIM_TIMER_DELAY_SEC);
+    bytes[12] = Math.floor(timerSec) % 256;
     bytes[15] = Math.floor(Math.random() * 256);
     onPacket(bytes);
   }, 100);
