@@ -1,8 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import {
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 import { api, type BrewListItem } from "../lib/api";
 import { formatDateTime, formatDuration } from "../lib/format";
+import { buildTrend, improvementPercent, toChartRows } from "../lib/trend";
 
 /**
  * 데모 시나리오 5번 — 추출 기록 목록.
@@ -14,6 +25,89 @@ import { formatDateTime, formatDuration } from "../lib/format";
 
 const btnPrimary =
   "rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40";
+
+/** 계열 색. 원두 두세 종을 구분할 정도면 충분합니다. */
+const SERIES_COLORS = ["#0f172a", "#0284c7", "#059669", "#c2410c"];
+
+function TrendChart({ items }: { items: BrewListItem[] }) {
+  const series = useMemo(() => buildTrend(items), [items]);
+  const rows = useMemo(() => toChartRows(series), [series]);
+
+  // 같은 레시피를 두 번 이상 내리기 전에는 보여줄 추이가 없습니다.
+  if (series.length === 0) return null;
+
+  return (
+    <div className="rounded border bg-white p-4">
+      <h2 className="text-sm font-semibold">정확도 추이</h2>
+      <p className="mt-0.5 text-xs text-slate-500">
+        같은 레시피를 반복했을 때의 정확도입니다. <b>선이 내려갈수록 목표에 가깝게</b> 내린
+        것입니다.
+      </p>
+
+      <ResponsiveContainer width="100%" height={220}>
+        <LineChart data={rows} margin={{ top: 12, right: 10, bottom: 5, left: -22 }}>
+          <CartesianGrid stroke="#e2e8f0" />
+          <XAxis
+            dataKey="attempt"
+            type="number"
+            domain={[1, "dataMax"]}
+            allowDecimals={false}
+            tickFormatter={(v) => `${v}회`}
+            fontSize={12}
+          />
+          <YAxis fontSize={12} />
+          <Tooltip
+            formatter={(value, name) => [`${Number(value).toFixed(1)} g`, name]}
+            labelFormatter={(v) => `${v}회차`}
+          />
+          <Legend wrapperStyle={{ fontSize: 12 }} />
+          {series.map((one, index) => (
+            <Line
+              key={one.recipeId}
+              type="linear"
+              dataKey={one.label}
+              name={one.label}
+              stroke={SERIES_COLORS[index % SERIES_COLORS.length]}
+              strokeWidth={2}
+              dot={{ r: 3 }}
+              // 회차가 짧은 계열은 뒤가 비어 있습니다. 이어 그리면 없는 값을 만든 셈이 됩니다.
+              connectNulls={false}
+              isAnimationActive={false}
+            />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+
+      <ul className="mt-2 space-y-1 text-sm">
+        {series.map((one, index) => {
+          const improvement = improvementPercent(one.rmses);
+          const first = one.rmses[0];
+          const last = one.rmses[one.rmses.length - 1];
+          return (
+            <li key={one.recipeId} className="flex flex-wrap items-center gap-2">
+              <span
+                className="inline-block h-2 w-2 rounded-full"
+                style={{ backgroundColor: SERIES_COLORS[index % SERIES_COLORS.length] }}
+              />
+              <span className="text-slate-700">{one.label}</span>
+              <span className="text-slate-500">
+                {one.rmses.length}회 · {first.toFixed(1)} g → {last.toFixed(1)} g
+              </span>
+              {improvement !== null && (
+                // 나빠진 경우도 그대로 보여줍니다. 좋아진 것처럼 감추지 않습니다.
+                <span
+                  className={improvement >= 0 ? "font-medium text-emerald-700" : "text-red-700"}
+                >
+                  {improvement >= 0 ? "▼" : "▲"} {Math.abs(improvement).toFixed(0)}%
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
 
 export default function HistoryPage() {
   const [items, setItems] = useState<BrewListItem[] | null>(null);
@@ -52,6 +146,10 @@ export default function HistoryPage() {
         <h1 className="text-lg font-semibold">추출 기록</h1>
         {items.length > 0 && <span className="text-xs text-slate-500">{items.length}건</span>}
       </div>
+
+      {/* 개별 기록보다 먼저 보여줍니다. 이 프로젝트가 주장하는 것이 재현성이라,
+          "나아지고 있는가"가 목록보다 중요합니다. */}
+      <TrendChart items={items} />
 
       {items.length === 0 ? (
         <div className="rounded border bg-white p-8 text-center text-sm text-slate-600">

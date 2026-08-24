@@ -102,11 +102,14 @@ def seed(db: Session) -> None:
         db.refresh(bean)
 
     # 가장 최근 추출이 오늘이 되도록 뒤에서부터 날짜를 채웁니다.
+    # **미래 날짜가 나오면 안 됩니다.** 총 회차 수에서 역산해 마지막이 오늘이 되게 합니다.
     now = datetime.now(UTC).replace(microsecond=0)
+    attempt_counts = (5, 3)
+    total_guided = sum(attempt_counts)
     day_offset = 0
     brew_ids: list[int] = []
 
-    for bean, attempt_count in zip(beans, (5, 3), strict=True):
+    for bean, attempt_count in zip(beans, attempt_counts, strict=True):
         result = generate_recipe(
             dose_g=20,
             drink_type="HOT",
@@ -142,7 +145,7 @@ def seed(db: Session) -> None:
             curve = simulate_brew(
                 recipe.target_curve, **params, seed=recipe.id * 100 + attempt_index
             )
-            started = now - timedelta(days=13 - day_offset * 2, hours=1)
+            started = now - timedelta(days=(total_guided - 1 - day_offset) * 2, hours=1)
             day_offset += 1
 
             brew = Brew(

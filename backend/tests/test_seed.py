@@ -4,6 +4,8 @@
 깨지면 안 됩니다. 그 성질이 곧 이 프로젝트가 주장하는 바입니다.
 """
 
+from datetime import UTC, datetime
+
 from app.models import Bean, Brew, Feedback, Recipe
 from app.seed import seed, simulate_brew
 
@@ -73,6 +75,24 @@ class TestSeed:
             assert all(r is not None for r in rmses)
             # RMSE는 작을수록 목표에 가깝습니다. 계속 줄어야 합니다.
             assert rmses == sorted(rmses, reverse=True), rmses
+
+    def test_no_brew_is_dated_in_the_future(self, db):
+        """지난 기록이라면서 내일 날짜가 찍히면 안 됩니다.
+
+        회차 수에서 역산하지 않고 고정 일수로 빼면, 회차를 늘렸을 때 마지막이 미래가 됩니다.
+        """
+        seed(db)
+
+        now = datetime.now(UTC).replace(tzinfo=None)
+        latest = max(brew.started_at for brew in db.query(Brew).all())
+        assert latest <= now
+
+    def test_brews_span_the_recent_past(self, db):
+        """전부 같은 날이면 추이가 시간에 따른 변화로 읽히지 않습니다."""
+        seed(db)
+
+        dates = sorted({brew.started_at.date() for brew in db.query(Brew).all()})
+        assert len(dates) >= 5
 
     def test_free_mode_brew_has_no_accuracy(self, db):
         seed(db)
