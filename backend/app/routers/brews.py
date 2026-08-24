@@ -105,6 +105,7 @@ def list_brews(db: DbSession, limit: Annotated[int, Query(ge=1, le=200)] = 50) -
                 rmse=brew.rmse,
                 duration_sec=brew.duration_sec,
                 final_weight_g=brew.final_weight_g,
+                recipe_id=brew.recipe_id,
                 bean_name=bean.name if bean else None,
                 dose_g=recipe.dose_g if recipe else None,
                 total_water_g=recipe.total_water_g if recipe else None,

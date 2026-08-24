@@ -159,6 +159,9 @@ class BrewListItem(CamelModel):
     rmse: float | None
     duration_sec: int
     final_weight_g: float
+    #: 따라간 목표 레시피. **같은 레시피끼리 묶어 정확도 추이를 보는 데 씁니다.**
+    #: 레시피가 다르면 조건이 달라 정확도를 나란히 비교할 수 없습니다.
+    recipe_id: int | None
     #: 원두를 등록하지 않고 만든 레시피, 자유 모드 추출은 null입니다.
     bean_name: str | None
     dose_g: int | None

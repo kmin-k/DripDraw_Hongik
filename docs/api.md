@@ -238,7 +238,7 @@ Rule Engine 없이도 **"내가 만든 레시피"를 재현**할 수 있게 하�
 {
   "items": [
     { "brewId": 34, "brewedAt": "2026-08-13T09:12:03Z", "rmse": 4.71,
-      "durationSec": 205, "finalWeightG": 300.4,
+      "durationSec": 205, "finalWeightG": 300.4, "recipeId": 12,
       "beanName": "Ethiopia Yirgacheffe", "doseG": 20, "totalWaterG": 300,
       "freeMode": false, "hasFeedback": true }
   ]
@@ -248,6 +248,7 @@ Rule Engine 없이도 **"내가 만든 레시피"를 재현**할 수 있게 하�
 **목록에는 곡선을 담지 않습니다.** 곡선 하나가 약 2,000점(45 KB)이라 몇 건만 모여도 응답이 커지고, 훑어보는 화면에는 필요하지 않습니다. 곡선은 상세에서 가져갑니다.
 
 - `freeMode`가 `true`면 따라간 목표가 없어 `rmse`·`doseG`·`totalWaterG`가 전부 `null`입니다
+- `recipeId`로 **같은 레시피끼리 묶어 정확도 추이**를 볼 수 있습니다. 레시피가 다르면 조건이 달라 정확도를 나란히 비교할 수 없습니다
 - `beanName`은 원두를 등록하지 않고 만든 레시피에서도 `null`입니다
 - `hasFeedback`으로 이미 평가한 추출을 구분합니다. 평가는 추출당 하나뿐입니다
 

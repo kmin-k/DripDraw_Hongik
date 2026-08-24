@@ -150,6 +150,8 @@ export interface BrewListItem {
   rmse: number | null;
   durationSec: number;
   finalWeightG: number;
+  /** 따라간 목표 레시피. **같은 레시피끼리 묶어 정확도 추이를 보는 데 씁니다.** */
+  recipeId: number | null;
   beanName: string | null;
   doseG: number | null;
   totalWaterG: number | null;
