@@ -31,14 +31,20 @@ def main() -> None:
     marker = cv2.aruco.generateImageMarker(d, args.id, side)
 
     canvas = np.full((side + quiet * 2, side + quiet * 2), 255, np.uint8)
-    canvas[quiet:quiet + side, quiet:quiet + side] = marker
+    canvas[quiet : quiet + side, quiet : quiet + side] = marker
 
     label = f"DripDraw  ID={args.id}  {args.mm:g}mm  (print at 100%)"
-    canvas = cv2.copyMakeBorder(canvas, 0, int(quiet * 0.9), 0, 0,
-                                cv2.BORDER_CONSTANT, value=255)
-    cv2.putText(canvas, label, (quiet // 2, canvas.shape[0] - quiet // 3),
-                cv2.FONT_HERSHEY_SIMPLEX, side / 900.0, 0, max(1, side // 300),
-                cv2.LINE_AA)
+    canvas = cv2.copyMakeBorder(canvas, 0, int(quiet * 0.9), 0, 0, cv2.BORDER_CONSTANT, value=255)
+    cv2.putText(
+        canvas,
+        label,
+        (quiet // 2, canvas.shape[0] - quiet // 3),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        side / 900.0,
+        0,
+        max(1, side // 300),
+        cv2.LINE_AA,
+    )
 
     cv2.imwrite(args.out, canvas)
     print(f"저장: {args.out}  ({canvas.shape[1]}x{canvas.shape[0]} px @ {args.dpi}dpi)")

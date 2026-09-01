@@ -20,11 +20,9 @@ OpenCV 만으로 재구현한 서버용 모듈.
 이 모듈은 GUI 에 의존하지 않으며(headless), 순수 함수로 동작한다.
 """
 
-from __future__ import annotations
-
 import math
-from dataclasses import dataclass, field, asdict
-from typing import Any, Optional
+from dataclasses import asdict, dataclass, field
+from typing import Any
 
 import cv2
 import numpy as np
@@ -34,6 +32,7 @@ __all__ = [
     "AnalysisError",
     "GrindAnalysisResult",
     "analyze_grind_image",
+    "confidence_level",
 ]
 
 
@@ -46,7 +45,7 @@ class AnalysisConfig:
 
     # --- 기준 마커 ---
     marker_dict: int = cv2.aruco.DICT_4X4_50
-    marker_length_mm: float = 20.0          # 인쇄한 마커 한 변의 실제 길이
+    marker_length_mm: float = 20.0  # 인쇄한 마커 한 변의 실제 길이
 
     # --- 해상도 요구조건 ---
     # µm/px 가 이 값보다 크면(= 너무 멀리서 찍으면) 입자가 몇 픽셀 안 되어
@@ -62,8 +61,8 @@ class AnalysisConfig:
     min_diameter_px: float = 5.0
 
     # --- 전처리 ---
-    threshold_mode: str = "otsu"            # "otsu" | "adaptive"
-    blur_ksize: int = 3                     # 3 권장. 5 이상은 미분(fines)을 뭉갬
+    threshold_mode: str = "otsu"  # "otsu" | "adaptive"
+    blur_ksize: int = 3  # 3 권장. 5 이상은 미분(fines)을 뭉갬
     flatfield: bool = True
 
     # --- watershed 분리 ---
@@ -75,7 +74,7 @@ class AnalysisConfig:
     max_canvas_px: int = 6000
 
     # --- 신뢰도 판정 ---
-    min_particle_count: int = 200           # 통계적으로 유의미한 최소 입자 수
+    min_particle_count: int = 200  # 통계적으로 유의미한 최소 입자 수
 
 
 class AnalysisError(Exception):
@@ -172,15 +171,11 @@ def _warp_to_flat(
     marker_mask : 보정 좌표계에서 마커가 차지하는 영역 (uint8 0/255)
     """
     side_px = (cfg.marker_length_mm * 1000.0) / um_per_px  # 확대/축소 없이 등배
-    dst = np.array(
-        [[0, 0], [side_px, 0], [side_px, side_px], [0, side_px]], dtype=np.float32
-    )
+    dst = np.array([[0, 0], [side_px, 0], [side_px, side_px], [0, side_px]], dtype=np.float32)
     H = cv2.getPerspectiveTransform(quad, dst)
 
     h, w = img.shape[:2]
-    src_corners = np.array(
-        [[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float32
-    ).reshape(-1, 1, 2)
+    src_corners = np.array([[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float32).reshape(-1, 1, 2)
     dst_corners = cv2.perspectiveTransform(src_corners, H).reshape(-1, 2)
 
     x0, y0 = dst_corners.min(axis=0)
@@ -215,9 +210,9 @@ def _warp_to_flat(
     # 보간 경계의 검은 테두리가 입자로 잡히지 않도록 안쪽으로 깎아낸다
     valid_mask = cv2.erode(valid_mask, np.ones((9, 9), np.uint8))
 
-    marker_quad = cv2.perspectiveTransform(
-        dst.reshape(-1, 1, 2), T.astype(np.float32)
-    ).reshape(-1, 2)
+    marker_quad = cv2.perspectiveTransform(dst.reshape(-1, 1, 2), T.astype(np.float32)).reshape(
+        -1, 2
+    )
     marker_mask = np.zeros((out_h, out_w), np.uint8)
     cv2.fillPoly(marker_mask, [np.round(marker_quad).astype(np.int32)], 255)
     # 마커 검은 테두리 잔여물 + 흰 여백 경계까지 넉넉히 제외
@@ -260,9 +255,7 @@ def _segment(
         background = cv2.morphologyEx(work, cv2.MORPH_CLOSE, kernel)
         background = cv2.GaussianBlur(background, (0, 0), sigmaX=k / 3.0)
         bg_f = background.astype(np.float32) + 1.0
-        work = np.clip(
-            work.astype(np.float32) / bg_f * float(bg_f.mean()), 0, 255
-        ).astype(np.uint8)
+        work = np.clip(work.astype(np.float32) / bg_f * float(bg_f.mean()), 0, 255).astype(np.uint8)
 
     kb = max(1, cfg.blur_ksize) | 1
     if kb > 1:
@@ -274,9 +267,7 @@ def _segment(
             work, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, block, 5
         )
     else:
-        _, binary = cv2.threshold(
-            work, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
-        )
+        _, binary = cv2.threshold(work, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
     binary = cv2.bitwise_and(binary, analysis_mask)
     # 소금 노이즈 제거 (열기). 3x3 1회면 충분하며 그 이상은 미분을 지운다.
@@ -334,8 +325,8 @@ def _measure(
 ) -> tuple[np.ndarray, int]:
     """유효 입자의 등가 직경(µm) 배열과 '경계에 걸려 버려진 개수'를 반환."""
     labels = markers.copy()
-    labels[labels < 0] = 0              # watershed 경계선
-    labels[binary == 0] = 0             # 임계값 밖으로 번진 영역 제거
+    labels[labels < 0] = 0  # watershed 경계선
+    labels[binary == 0] = 0  # 임계값 밖으로 번진 영역 제거
 
     # 이미지 가장자리 / 무효 영역 / 마커에 닿은 입자는 잘려 있으므로 통계에서 제외
     excluded = cv2.bitwise_or(cv2.bitwise_not(valid_mask), marker_mask)
@@ -354,7 +345,7 @@ def _measure(
     bad = bad[bad >= 2]
 
     keep = np.ones(max_label + 1, dtype=bool)
-    keep[0] = keep[1] = False           # 0=제외, 1=배경
+    keep[0] = keep[1] = False  # 0=제외, 1=배경
     keep[bad] = False
 
     areas_px = counts[keep]
@@ -400,14 +391,17 @@ def _classify(dv50: float) -> str:
 
 
 def _build_stats(
-    diam_um: np.ndarray, um_per_px: float, marker_id: int, warnings: list[str],
+    diam_um: np.ndarray,
+    um_per_px: float,
+    marker_id: int,
+    warnings: list[str],
     cfg: AnalysisConfig,
 ) -> GrindAnalysisResult:
     d = np.sort(diam_um)
     n = d.size
 
     d10, d50, d90 = (float(x) for x in np.percentile(d, [10, 50, 90]))
-    vol_w = d ** 3  # 구 가정 부피 가중
+    vol_w = d**3  # 구 가정 부피 가중
     dv10 = _weighted_percentile(d, vol_w, 0.10)
     dv50 = _weighted_percentile(d, vol_w, 0.50)
     dv90 = _weighted_percentile(d, vol_w, 0.90)
@@ -457,8 +451,8 @@ def _build_stats(
 # --------------------------------------------------------------------------- #
 def analyze_grind_image(
     img: np.ndarray,
-    cfg: Optional[AnalysisConfig] = None,
-    debug_path: Optional[str] = None,
+    cfg: AnalysisConfig | None = None,
+    debug_path: str | None = None,
 ) -> GrindAnalysisResult:
     """
     BGR 이미지를 받아 분쇄도 분석 결과를 반환한다.
@@ -495,9 +489,7 @@ def analyze_grind_image(
     warped, valid_mask, marker_mask = _warp_to_flat(img, quad, um_per_px, cfg)
     binary = _segment(warped, valid_mask, marker_mask, um_per_px, cfg)
     markers = _split_particles(warped, binary, um_per_px, cfg)
-    diam_um, truncated = _measure(
-        markers, binary, valid_mask, marker_mask, um_per_px, cfg
-    )
+    diam_um, truncated = _measure(markers, binary, valid_mask, marker_mask, um_per_px, cfg)
 
     if diam_um.size == 0:
         raise AnalysisError(
@@ -508,7 +500,8 @@ def analyze_grind_image(
 
     if truncated > diam_um.size * 0.3:
         warnings.append(
-            "가장자리에 걸려 제외된 입자가 많습니다. 가루를 화면 안쪽에 모아 촬영하면 정확도가 올라갑니다."
+            "가장자리에 걸려 제외된 입자가 많습니다. "
+            "가루를 화면 안쪽에 모아 촬영하면 정확도가 올라갑니다."
         )
 
     if debug_path:
@@ -517,9 +510,7 @@ def analyze_grind_image(
     return _build_stats(diam_um, um_per_px, marker_id, warnings, cfg)
 
 
-def _save_debug(
-    warped: np.ndarray, binary: np.ndarray, markers: np.ndarray, path: str
-) -> None:
+def _save_debug(warped: np.ndarray, binary: np.ndarray, markers: np.ndarray, path: str) -> None:
     """검출 결과를 색으로 칠한 디버그 이미지를 저장 (imshow 대신 사용)."""
     vis = warped.copy()
     max_label = int(markers.max())
@@ -535,3 +526,20 @@ def _save_debug(
         vis[mask] = cv2.addWeighted(vis, 0.35, colored, 0.65, 0)[mask]
     vis[markers == -1] = (0, 0, 255)
     cv2.imwrite(path, vis)
+
+
+def confidence_level(result: GrindAnalysisResult, cfg: AnalysisConfig | None = None) -> str:
+    """측정 신뢰도를 HIGH / MEDIUM / LOW 로 요약합니다 (docs/api.md).
+
+    절대 입자 크기를 보장하지 않는 상대 가이드이므로, 사용자가 값을 얼마나
+    믿어야 할지 함께 알려야 합니다. 판단 근거는 두 가지입니다.
+
+    * 해상도(µm/px) — 입자 하나가 몇 픽셀로 찍혔는지. 낮을수록 미분 측정이 정확합니다.
+    * 입자 수 — 분포 통계가 안정되려면 표본이 충분해야 합니다.
+    """
+    cfg = cfg or AnalysisConfig()
+    if result.warnings or result.particle_count < cfg.min_particle_count:
+        return "LOW"
+    if result.um_per_px <= cfg.warn_um_per_px / 2 and result.particle_count >= 500:
+        return "HIGH"
+    return "MEDIUM"

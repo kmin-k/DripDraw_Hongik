@@ -264,3 +264,25 @@ class SaveAsRecipeRequest(CamelModel):
     dose_g: int = Field(ge=C.DOSE_MIN_G, le=C.DOSE_MAX_G)
     drink_type: DrinkType
     bean_id: int | None = None
+
+
+class GrindConfidence(StrEnum):
+    """측정 신뢰도. 해상도와 검출 입자 수로 판단합니다 (app/services/grind_analyzer.py)."""
+
+    HIGH = "HIGH"
+    MEDIUM = "MEDIUM"
+    LOW = "LOW"
+
+
+class GrindAnalysisOut(CamelModel):
+    """분쇄도 측정 결과 (docs/api.md `POST /api/vision/grind`).
+
+    절대 입자 크기를 보장하지 않습니다. 촬영 조건에 따라 값이 달라지므로
+    confidence를 함께 내고 화면에도 상대 가이드임을 명시합니다.
+    """
+
+    #: 부피 가중 D50. recipe/generate의 d50Um 입력에 그대로 넣을 수 있습니다.
+    d50_um: float = Field(gt=0)
+    #: rule_engine.grind_guide가 만든 안내 문구. 예: "2단계 곱게"
+    guide: str
+    confidence: GrindConfidence

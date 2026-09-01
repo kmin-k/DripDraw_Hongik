@@ -105,7 +105,7 @@ def _flow_rate(roast_level: str, region: str, drink_type: str, d50_um: float) ->
     return max(C.FLOW_MIN, min(C.FLOW_MAX, raw))
 
 
-def _grind_guide(drink_type: str, d50_um: float) -> str:
+def grind_guide(drink_type: str, d50_um: float) -> str:
     """8-5절: 1단계 = 50 μm. 상대 안내 텍스트만 출력하고 누적 저장하지 않습니다."""
     low, high = C.D50_RANGE[drink_type]
     if d50_um < low:
@@ -222,7 +222,7 @@ def generate_recipe(
         bloom_wait_sec=interval - C.BLOOM_POUR_SEC,
         pour_interval_sec=interval,
         total_time_sec=plan.total_time_sec,
-        grind_guide=_grind_guide(drink_type, d50_um),
+        grind_guide=grind_guide(drink_type, d50_um),
         ice_message=("얼음이 가득 담긴 컵에 부어 드세요!" if drink_type == "ICE" else None),
         pours=plan.pours,
         target_curve=plan.target_curve,
