@@ -3,3 +3,6 @@ uvicorn[standard]
 sqlalchemy
 pydantic
 pydantic-settings
+
+opencv-python-headless>=4.8,<5
+numpy>=1.24
