@@ -77,7 +77,7 @@ async def analyze_grind(
     사진에는 기준 크기를 알 수 있는 ArUco 마커가 가루와 같은 평면에 있어야 합니다.
     마커가 없으면 픽셀을 μm로 환산할 방법이 없어 400을 냅니다.
     """
-    if bean_id is not None and db.get(Bean, bean_id) is None:
+    if bean_id and db.get(Bean, bean_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"bean_id {bean_id} not found")
 
     if file.content_type and file.content_type.lower() not in ALLOWED_TYPES:
