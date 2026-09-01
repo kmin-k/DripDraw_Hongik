@@ -31,12 +31,17 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="원두 분쇄도 분석 테스트")
     ap.add_argument("image", nargs="?", default="sample.jpg")
     ap.add_argument(
-        "--marker-mm", type=float, default=20.0, help="인쇄한 마커 한 변의 실제 길이(mm)"
+        "--marker-mm",
+        type=float,
+        default=20.0,
+        help="인쇄한 마커 한 변의 실제 길이(mm)",
     )
     ap.add_argument("--threshold", choices=["otsu", "adaptive"], default="otsu")
     ap.add_argument("--no-watershed", action="store_true", help="입자 분리를 끄고 비교해 본다")
     ap.add_argument(
-        "--debug", default="debug_result.jpg", help="검출 결과를 색칠한 이미지 저장 경로"
+        "--debug",
+        default="debug_result.jpg",
+        help="검출 결과를 색칠한 이미지 저장 경로",
     )
     args = ap.parse_args()
 
