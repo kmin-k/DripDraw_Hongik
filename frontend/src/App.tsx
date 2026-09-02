@@ -1,5 +1,7 @@
 import { Link, NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 
+import ErrorBoundary from "./components/ErrorBoundary";
+
 import BeansPage from "./pages/BeansPage";
 import BrewDetailPage from "./pages/BrewDetailPage";
 import BrewPage from "./pages/BrewPage";
@@ -81,19 +83,23 @@ export default function App() {
 
       {/* 탭바가 화면 아래에 떠 있으므로 마지막 내용이 가리지 않게 여백을 둡니다. */}
       <main className={`mx-auto max-w-3xl px-4 py-6 ${inFlow ? "pb-6" : "pb-24"}`}>
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/onboarding" element={<OnboardingPage />} />
-          <Route path="/beans" element={<BeansPage />} />
-          <Route path="/recipe" element={<RecipePage />} />
-          <Route path="/brew" element={<BrewPage />} />
-          <Route path="/feedback" element={<FeedbackPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/history" element={<HistoryPage />} />
-          {/* 상세는 주소에 id를 둡니다. 새로고침해도 살아남고 링크를 그대로 열 수 있습니다. */}
-          <Route path="/history/:brewId" element={<BrewDetailPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        {/* 본문만 감쌉니다. 헤더와 탭바가 남아 있어야 오류 화면에서 다른 곳으로 빠져나갈 수 있습니다.
+            화면을 옮기면 경계도 새로 만들어져(key) 오류 상태가 자동으로 풀립니다. */}
+        <ErrorBoundary key={pathname}>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/onboarding" element={<OnboardingPage />} />
+            <Route path="/beans" element={<BeansPage />} />
+            <Route path="/recipe" element={<RecipePage />} />
+            <Route path="/brew" element={<BrewPage />} />
+            <Route path="/feedback" element={<FeedbackPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/history" element={<HistoryPage />} />
+            {/* 상세는 주소에 id를 둡니다. 새로고침해도 살아남고 링크를 그대로 열 수 있습니다. */}
+            <Route path="/history/:brewId" element={<BrewDetailPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </ErrorBoundary>
       </main>
 
       {!inFlow && <TabBar />}
