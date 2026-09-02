@@ -1,5 +1,7 @@
 # DripDraw
 
+[![CI](https://github.com/kmin-k/DripDraw_Hongik/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/kmin-k/DripDraw_Hongik/actions/workflows/ci.yml)
+
 사용자 입력으로 목표 추출 곡선(Target Curve)을 만들고, Felicita Arc의 실시간 무게 곡선과 비교해 브루잉 재현성을 높이는 3인 졸업 프로젝트입니다.
 
 ## 핵심 가치
