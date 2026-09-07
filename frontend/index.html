@@ -2,8 +2,20 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover: 홈 화면에서 실행할 때 노치·둥근 모서리까지 화면을 씁니다. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>DripDraw</title>
+    <meta name="description" content="목표 곡선을 따라 내리고 정확도를 확인하는 핸드드립 가이드" />
+
+    <!-- 홈 화면에 설치하고 전체화면으로 실행하기 위한 설정 -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- 안드로이드 크롬의 주소창·상태바 색. 헤더와 같은 색이라 경계가 안 보입니다. -->
+    <meta name="theme-color" content="#0f172a" />
+    <link rel="icon" href="/icon-192.png" />
+    <!-- iOS는 manifest의 icons를 읽지 않아 따로 지정해야 합니다. -->
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="DripDraw" />
   </head>
   <body>
     <div id="root"></div>
