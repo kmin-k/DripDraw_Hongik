@@ -84,6 +84,8 @@ npm run dev
 
 `/api`와 `/health` 요청은 Vite가 8000번으로 프록시하므로 두 서버를 함께 띄우면 됩니다.
 
+> 윈도우에서는 [`start-dev.bat`](start-dev.bat)을 더블클릭하면 두 서버가 각각 새 창에서 뜹니다.
+
 **앱으로 설치해서 쓰기 (PWA)**
 
 ```bash
