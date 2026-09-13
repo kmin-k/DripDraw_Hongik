@@ -55,7 +55,7 @@ class AnalysisConfig:
     warn_um_per_px: float = 20.0
 
     # --- 입자 크기 필터 (물리 단위. 픽셀 단위로 하드코딩하지 않는다) ---
-    min_diameter_um: float = 50.0
+    min_diameter_um: float = 150.0
     max_diameter_um: float = 2500.0
     # 등가 직경이 이 픽셀 수보다 작으면 형상 오차가 커서 통계에서 제외
     min_diameter_px: float = 5.0
