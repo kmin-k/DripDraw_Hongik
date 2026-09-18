@@ -10,7 +10,7 @@ import {
   YAxis,
 } from "recharts";
 
-import { api, type Bean, type Recipe, type RecipeRequest } from "../lib/api";
+import { api, type Bean, type RecipePreview, type RecipeRequest } from "../lib/api";
 import { DRINK, PHASE, PROCESS, REGION, ROAST } from "../lib/labels";
 import { loadSettings } from "../lib/settings";
 
@@ -53,16 +53,18 @@ export default function RecipePage() {
 
   const [form, setForm] = useState<RecipeRequest>(initialForm);
   const [beans, setBeans] = useState<Bean[]>([]);
-  const [recipe, setRecipe] = useState<Recipe | null>(null);
+  const [recipe, setRecipe] = useState<RecipePreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [starting, setStarting] = useState(false);
 
-  // 입력이 멈춘 뒤에만 호출합니다. 슬라이더를 끌 때마다 보내면 레시피 기록이 불필요하게 쌓입니다.
+  // 입력이 멈춘 뒤 **미리보기**만 부릅니다. 저장하지 않으므로 슬라이더를 아무리 끌어도
+  // 레시피가 쌓이지 않습니다. 저장은 "이 레시피로 추출하기"를 누를 때 한 번입니다.
   useEffect(() => {
     const timer = setTimeout(async () => {
       setLoading(true);
       try {
-        setRecipe(await api.generateRecipe(form));
+        setRecipe(await api.previewRecipe(form));
         setError(null);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -72,6 +74,19 @@ export default function RecipePage() {
     }, 400);
     return () => clearTimeout(timer);
   }, [form]);
+
+  /** 지금 입력으로 레시피를 저장하고 추출 화면으로 넘어갑니다. */
+  const startBrew = async () => {
+    setStarting(true);
+    setError(null);
+    try {
+      const saved = await api.generateRecipe(form);
+      navigate("/brew", { state: { recipe: saved } });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setStarting(false);
+    }
+  };
 
   // 등록한 원두가 없어도 화면은 그대로 동작합니다. 목록은 선택지일 뿐입니다.
   useEffect(() => {
@@ -315,10 +330,13 @@ export default function RecipePage() {
           {/* 목표를 따라갈지, 내 방식대로 내리고 기록만 할지 고릅니다. */}
           <div className="grid gap-3 sm:grid-cols-2">
             <button
-              onClick={() => navigate("/brew", { state: { recipe } })}
-              className="rounded bg-slate-900 px-4 py-3 text-white"
+              onClick={startBrew}
+              disabled={starting || loading}
+              className="rounded bg-slate-900 px-4 py-3 text-white disabled:opacity-60"
             >
-              <div className="text-sm font-medium">이 레시피로 추출하기</div>
+              <div className="text-sm font-medium">
+                {starting ? "저장하는 중…" : "이 레시피로 추출하기"}
+              </div>
               <div className="mt-0.5 text-xs text-slate-300">목표 곡선을 따라가고 정확도 측정</div>
             </button>
             <button

@@ -18,6 +18,9 @@ export const PROCESS = { WASHED: "워시드", NATURAL: "내추럴" } as const;
 
 export const DRINK = { HOT: "핫", ICE: "아이스" } as const;
 
+/** 레시피가 어디서 왔는지. 목록에서 배지로 보입니다. */
+export const SOURCE = { RULE_ENGINE: "규칙", ADJUSTED: "보정", RECORDED: "기록" } as const;
+
 export const PHASE = {
   BLOOM: "뜸들이기",
   SECOND: "2차",

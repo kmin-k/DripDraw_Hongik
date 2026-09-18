@@ -10,6 +10,7 @@ import HistoryPage from "./pages/HistoryPage";
 import HomePage from "./pages/HomePage";
 import OnboardingPage from "./pages/OnboardingPage";
 import RecipePage from "./pages/RecipePage";
+import RecipesPage from "./pages/RecipesPage";
 import SettingsPage from "./pages/SettingsPage";
 import { loadSettings } from "./lib/settings";
 
@@ -24,6 +25,7 @@ import { loadSettings } from "./lib/settings";
 const TABS = [
   { to: "/", label: "홈", icon: "🏠" },
   { to: "/beans", label: "원두", icon: "🫘" },
+  { to: "/recipes", label: "레시피", icon: "📈" },
   { to: "/history", label: "기록", icon: "📋" },
   { to: "/settings", label: "설정", icon: "⚙️" },
 ];
@@ -62,7 +64,8 @@ export default function App() {
   const needsOnboarding = !loadSettings().onboarded && pathname !== "/onboarding";
   if (needsOnboarding) return <Navigate to="/onboarding" replace />;
 
-  const inFlow = FLOW_PATHS.some((path) => pathname.startsWith(path));
+  // 접두사로 비교하면 /recipe가 /recipes(레시피 탭)까지 잡습니다. 경로 단위로 맞춥니다.
+  const inFlow = FLOW_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -91,6 +94,7 @@ export default function App() {
             <Route path="/onboarding" element={<OnboardingPage />} />
             <Route path="/beans" element={<BeansPage />} />
             <Route path="/recipe" element={<RecipePage />} />
+            <Route path="/recipes" element={<RecipesPage />} />
             <Route path="/brew" element={<BrewPage />} />
             <Route path="/feedback" element={<FeedbackPage />} />
             <Route path="/settings" element={<SettingsPage />} />
