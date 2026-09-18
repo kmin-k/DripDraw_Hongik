@@ -29,6 +29,7 @@ erDiagram
         int parent_recipe_id FK "보정 이전 레시피"
         string source "RULE_ENGINE|ADJUSTED|RECORDED"
         string name "NULL 허용 — RECORDED에서 사용자가 붙인 이름"
+        int source_brew_id "RECORDED의 원본 기록. FK 아님"
         int dose_g "원두량"
         string drink_type "HOT|ICE"
         float total_water_g
@@ -96,6 +97,7 @@ erDiagram
 
 - **`RECIPE`의 필드는 두 층으로 나뉩니다.** `target_curve`·`total_water_g`·`total_time_sec`·`dose_g`는 **곡선을 재현하는 데 반드시 필요**하므로 NOT NULL입니다. 반면 `water_temp_c`·`flow_rate`·`pour_plan` 등은 Rule Engine이 규칙으로 계산한 부가 정보라, 사용자의 추출을 그대로 저장한 `RECORDED` 레시피에는 **존재하지 않습니다.**
 - **`source = RECORDED`** — 자유 모드로 내린 추출이 마음에 들었을 때 그 곡선을 목표로 저장한 레시피입니다. Rule Engine 없이도 "내가 만든 레시피를 다시 재현"할 수 있게 합니다.
+- **`source_brew_id`는 외래키가 아닙니다** — `brews.recipe_id → recipes`가 이미 있어 여기에 `recipes.source_brew_id → brews`를 걸면 두 테이블이 서로를 가리킵니다. SQLite는 순환 제약을 만들 수 없어 정수 컬럼으로 두고, 기록을 지울 때 코드가 NULL로 풉니다. 용도는 둘 — 같은 기록을 두 번 저장하지 못하게(409), 기록 상세에서 "이미 저장됨"을 보여주기.
 - **GRIND_ANALYSIS는 P5** — Vision을 드랍해도 나머지 스키마에 영향이 없도록 분리했습니다.
 
 **의도적으로 두지 않은 컬럼**

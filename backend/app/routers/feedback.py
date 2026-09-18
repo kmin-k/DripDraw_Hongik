@@ -14,13 +14,13 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Brew, Feedback, Recipe
+from app.routers.recipes import recipe_out
 from app.schemas import (
     ChangeOut,
     FeedbackOut,
     FeedbackUpdate,
     RecipeAdjustRequest,
     RecipeAdjustResponse,
-    RecipeOut,
 )
 from app.services import constants as C
 from app.services.feedback import Adjustment, adjust_parameters
@@ -182,19 +182,7 @@ def adjust_recipe(payload: RecipeAdjustRequest, db: DbSession) -> RecipeAdjustRe
         parent_recipe_id=recipe.id,
         changes=[ChangeOut(**asdict(change)) for change in changes],
         notices=notices,
-        recipe=RecipeOut(
-            recipe_id=suggested.id,
-            water_temp_c=suggested.water_temp_c,
-            total_water_g=suggested.total_water_g,
-            ratio=suggested.ratio,
-            flow_rate_gps=suggested.flow_rate,
-            grind_guide=suggested.grind_guide,
-            ice_message=(
-                "얼음이 가득 담긴 컵에 부어 드세요!" if suggested.drink_type == "ICE" else None
-            ),
-            pours=suggested.pour_plan,
-            target_curve=suggested.target_curve,
-        ),
+        recipe=recipe_out(suggested),
     )
 
 

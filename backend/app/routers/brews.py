@@ -3,11 +3,12 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Bean, Brew, Recipe
+from app.routers.recipes import recipe_out
 from app.schemas import (
     BrewCreate,
     BrewDetail,
@@ -26,22 +27,9 @@ router = APIRouter(prefix="/api/brews", tags=["brews"])
 DbSession = Annotated[Session, Depends(get_db)]
 
 
-def _recipe_out(recipe: Recipe) -> RecipeOut:
-    """저장된 레시피를 응답 형태로. RECORDED 레시피는 규칙 필드가 전부 None입니다."""
-    return RecipeOut(
-        recipe_id=recipe.id,
-        name=recipe.name,
-        bean_id=recipe.bean_id,
-        bean_name=recipe.bean.name if recipe.bean else None,
-        water_temp_c=recipe.water_temp_c,
-        total_water_g=int(recipe.total_water_g),
-        ratio=recipe.ratio,
-        flow_rate_gps=recipe.flow_rate,
-        grind_guide=recipe.grind_guide,
-        ice_message=("얼음이 가득 담긴 컵에 부어 드세요!" if recipe.drink_type == "ICE" else None),
-        pours=recipe.pour_plan or [],
-        target_curve=recipe.target_curve,
-    )
+def _saved_recipe_of(brew: Brew, db: Session) -> Recipe | None:
+    """이 기록을 목표로 저장해 만든 레시피. 없으면 None."""
+    return db.scalar(select(Recipe).where(Recipe.source_brew_id == brew.id))
 
 
 @router.post("", response_model=BrewOut, status_code=status.HTTP_201_CREATED)
@@ -133,6 +121,8 @@ def delete_brew(brew_id: int, db: DbSession) -> None:
 
     if brew.feedback is not None:
         db.delete(brew.feedback)
+    # 이 기록에서 만든 레시피는 남기되, 사라진 기록을 가리키지 않게 합니다.
+    db.execute(update(Recipe).where(Recipe.source_brew_id == brew_id).values(source_brew_id=None))
     db.delete(brew)
     db.commit()
 
@@ -146,8 +136,11 @@ def get_brew(brew_id: int, db: DbSession) -> BrewDetail:
 
     recipe = brew.recipe
     feedback = brew.feedback
+    saved = _saved_recipe_of(brew, db)
 
     return BrewDetail(
+        saved_recipe_id=saved.id if saved else None,
+        saved_recipe_name=saved.name if saved else None,
         brew_id=brew.id,
         brewed_at=brew.started_at,
         rmse=brew.rmse,
@@ -155,7 +148,7 @@ def get_brew(brew_id: int, db: DbSession) -> BrewDetail:
         final_weight_g=brew.final_weight_g,
         actual_curve=brew.actual_curve,
         bean_name=recipe.bean.name if recipe and recipe.bean else None,
-        recipe=_recipe_out(recipe) if recipe else None,
+        recipe=recipe_out(recipe) if recipe else None,
         feedback=(
             FeedbackDetail(
                 feedback_id=feedback.id,
@@ -185,6 +178,14 @@ def save_as_recipe(brew_id: int, payload: SaveAsRecipeRequest, db: DbSession) ->
     if brew is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"brew_id {brew_id} not found")
 
+    # 같은 기록을 두 번 저장하면 곡선이 같은 레시피가 둘이 됩니다. 이미 있으면 그쪽을 가리킵니다.
+    existing = _saved_recipe_of(brew, db)
+    if existing is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail=f"이 기록은 이미 레시피 #{existing.id}로 저장했습니다.",
+        )
+
     if payload.bean_id is not None and db.get(Bean, payload.bean_id) is None:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND, detail=f"bean_id {payload.bean_id} not found"
@@ -212,6 +213,7 @@ def save_as_recipe(brew_id: int, payload: SaveAsRecipeRequest, db: DbSession) ->
     recipe = Recipe(
         bean_id=bean_id,
         source="RECORDED",
+        source_brew_id=brew.id,
         name=payload.name.strip() if payload.name else None,
         dose_g=payload.dose_g,
         drink_type=payload.drink_type,
@@ -223,4 +225,4 @@ def save_as_recipe(brew_id: int, payload: SaveAsRecipeRequest, db: DbSession) ->
     db.commit()
     db.refresh(recipe)
 
-    return _recipe_out(recipe)
+    return recipe_out(recipe)
