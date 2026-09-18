@@ -18,7 +18,7 @@ import SaveAsRecipeForm from "../components/SaveAsRecipeForm";
 import { api, type BrewResult, type Recipe } from "../lib/api";
 import { brewEnd, nextPourTarget, pourTargets } from "../lib/pours";
 import type { Curve } from "../lib/rmse";
-import { useBrewSession } from "../lib/useBrewSession";
+import { DROP_ABORT_G, useBrewSession } from "../lib/useBrewSession";
 
 /**
  * 데모 시나리오 3번 — 시연 성패를 가르는 화면.
@@ -90,6 +90,14 @@ export default function BrewPage() {
     void scale.resetTimer().then(() => scale.startTimer());
   };
 
+  // 측정이 끊기면(저울 영점 등) 저울 타이머도 멈춥니다. 화면은 멈췄는데 저울만 돌면 헷갈립니다.
+  const registerAbort = brew.onAbort;
+  const stopTimer = scale.stopTimer;
+  useEffect(() => {
+    registerAbort(() => void stopTimer());
+    return () => registerAbort(null);
+  }, [registerAbort, stopTimer]);
+
   // 아래 자동 시작 effect가 쓰는 값들. 훅 목록에 넣기 좋게 따로 꺼내 둡니다.
   const phaseNow = brew.phase;
   const startSession = brew.start;
@@ -152,6 +160,7 @@ export default function BrewPage() {
   const running = brew.phase === "RUNNING";
   const paused = brew.phase === "PAUSED";
   const finished = brew.phase === "FINISHED";
+  const aborted = brew.phase === "ABORTED";
 
   // 새로고침이나 직접 진입이면 넘겨받은 상태가 없습니다. 어느 모드인지 알 수 없으니 되돌립니다.
   if (!recipe && !freeMode) {
@@ -402,6 +411,18 @@ export default function BrewPage() {
           </LineChart>
         </ResponsiveContainer>
       </div>
+
+      {/* 측정이 끊긴 뒤의 값은 어느 것도 믿을 수 없어 저장 버튼 자체를 두지 않습니다.
+          "고쳐서 이어가는" 척하면 기록이 오염되는데 화면은 멀쩡해 보여 더 위험합니다. */}
+      {aborted && (
+        <div className="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          <div className="font-medium">저울 영점이 눌려 측정이 끊겼습니다</div>
+          <div className="mt-1 text-red-700">
+            무게가 갑자기 {DROP_ABORT_G} g 넘게 떨어졌습니다. 추출 중에는 저울의 영점 버튼을
+            누르거나 드리퍼를 들어올리면 안 됩니다. 이 추출은 저장할 수 없습니다.
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2">
         {!connected ? (

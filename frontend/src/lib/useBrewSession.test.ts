@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { CurvePoint } from "./rmse";
-import { downsample, toSample } from "./useBrewSession";
+import { DROP_ABORT_G, downsample, isMeasurementBroken, toSample } from "./useBrewSession";
 
 describe("toSample — 저울 패킷을 곡선 위의 점으로", () => {
   const START = 10_000; // performance.now 기준 시작 시각
@@ -85,5 +85,34 @@ describe("downsample — 화면용 솎아내기", () => {
   it("시간 순서를 유지한다", () => {
     const times = downsample(make(1900), 200).map(([t]) => t);
     expect(times).toEqual([...times].sort((a, b) => a - b));
+  });
+});
+
+describe("isMeasurementBroken — 저울 영점·드리퍼 들어올림 감지", () => {
+  it("첫 패킷은 비교 대상이 없어 판단하지 않는다", () => {
+    expect(isMeasurementBroken(null, 0)).toBe(false);
+  });
+
+  it("★ 영점을 누르면 무게가 통째로 사라진다", () => {
+    // 드리퍼 350 g + 물 120 g = 470 g에서 영점 → 다음 패킷은 0 근처.
+    expect(isMeasurementBroken(470, 0.3)).toBe(true);
+  });
+
+  it("드리퍼를 들어올려도 같은 이유로 끊는다", () => {
+    expect(isMeasurementBroken(470, 200)).toBe(true);
+  });
+
+  it("저울 진동 정도의 흔들림은 넘어간다", () => {
+    // 주전자를 올려놓거나 손이 닿으면 ±1~2 g 정도 흔들립니다.
+    expect(isMeasurementBroken(470, 468.5)).toBe(false);
+  });
+
+  it("문턱 바로 아래는 통과, 문턱부터 단절", () => {
+    expect(isMeasurementBroken(100, 100 - DROP_ABORT_G + 0.1)).toBe(false);
+    expect(isMeasurementBroken(100, 100 - DROP_ABORT_G)).toBe(true);
+  });
+
+  it("무게가 늘어나는 것은 언제나 정상이다", () => {
+    expect(isMeasurementBroken(100, 400)).toBe(false);
   });
 });
