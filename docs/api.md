@@ -34,6 +34,7 @@ FastAPI가 `/docs`에 Swagger를 자동 생성하므로, **이 문서는 계약 
 | `GET` | `/health` | 0 |
 | `POST` | `/api/beans` | 0 |
 | `GET` | `/api/beans` | 0 |
+| `DELETE` | `/api/beans/{id}` | 5 |
 | `POST` | `/api/recipe/generate` | 3 |
 | `POST` | `/api/recipe/adjust` | 4 |
 | `PATCH` | `/api/feedback/{id}` | 4 |
@@ -41,6 +42,7 @@ FastAPI가 `/docs`에 Swagger를 자동 생성하므로, **이 문서는 계약 
 | `POST` | `/api/brews/{id}/save-as-recipe` | 2 |
 | `GET` | `/api/brews` | 2 |
 | `GET` | `/api/brews/{id}` | 5 |
+| `DELETE` | `/api/brews/{id}` | 5 |
 | `POST` | `/api/vision/grind` | 6 |
 
 ---
@@ -73,6 +75,14 @@ FastAPI가 `/docs`에 Swagger를 자동 생성하므로, **이 문서는 계약 
 ```json
 { "items": [ { "id": 1, "name": "Ethiopia Yirgacheffe", "region": "AFRICA", "roastLevel": "LIGHT", "process": "WASHED" } ] }
 ```
+
+## `DELETE /api/beans/{id}` — 원두 삭제
+
+응답 `204`. 없으면 `404`.
+
+그 원두로 만든 레시피와 추출 기록은 **남기고 연결만 끊습니다** (`beanId`·`beanName`이 `null`).
+원두는 레시피의 입력 조건일 뿐이고 기록은 실제로 내린 커피라, 원두를 정리했다고 정확도 추이가
+끊기면 안 됩니다. 연결이 끊긴 레시피로도 다시 내릴 수 있습니다 — 곡선은 레시피가 갖고 있습니다.
 
 ---
 
@@ -288,6 +298,14 @@ Rule Engine 없이도 **"내가 만든 레시피"를 재현**할 수 있게 하�
 
 - 자유 모드 추출은 `recipe`가 `null`입니다. 화면은 실측 한 줄만 그립니다
 - 평가하지 않았으면 `feedback`이 `null`입니다
+
+## `DELETE /api/brews/{id}` — 기록 삭제
+
+응답 `204`. 없으면 `404`.
+
+맛 평가는 기록에 딸린 것이라 **함께 지웁니다.** 이 기록으로 만든 레시피(목표로 저장·피드백 보정)는
+**남깁니다** — 레시피는 기록을 가리키지 않는 독립된 산출물이고, 이미 그 레시피로 내린 다른 기록이
+있을 수 있습니다.
 
 ---
 

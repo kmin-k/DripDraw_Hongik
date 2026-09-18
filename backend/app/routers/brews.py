@@ -120,6 +120,23 @@ def list_brews(db: DbSession, limit: Annotated[int, Query(ge=1, le=200)] = 50) -
     return BrewList(items=items)
 
 
+@router.delete("/{brew_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_brew(brew_id: int, db: DbSession) -> None:
+    """기록 삭제. 맛 평가는 기록에 딸린 것이라 함께 지웁니다.
+
+    이 기록으로 만든 레시피(목표로 저장·피드백 보정)는 남깁니다. 레시피는 기록을
+    가리키지 않는 독립된 산출물이고, 이미 그 레시피로 내린 다른 기록이 있을 수 있습니다.
+    """
+    brew = db.get(Brew, brew_id)
+    if brew is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"brew_id {brew_id} not found")
+
+    if brew.feedback is not None:
+        db.delete(brew.feedback)
+    db.delete(brew)
+    db.commit()
+
+
 @router.get("/{brew_id}", response_model=BrewDetail)
 def get_brew(brew_id: int, db: DbSession) -> BrewDetail:
     """추출 하나의 전부. 곡선을 다시 그리고 여기서 바로 다시 내릴 수 있어야 합니다."""

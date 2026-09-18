@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   CartesianGrid,
   Line,
@@ -10,6 +10,7 @@ import {
   YAxis,
 } from "recharts";
 
+import DeleteButton from "../components/DeleteButton";
 import SaveAsRecipeForm from "../components/SaveAsRecipeForm";
 import { ApiError, api, type BrewDetail, type Recipe } from "../lib/api";
 import { formatDateTime, formatDuration } from "../lib/format";
@@ -54,6 +55,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 export default function BrewDetailPage() {
   const { brewId } = useParams();
+  const navigate = useNavigate();
   const [brew, setBrew] = useState<BrewDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -142,6 +144,18 @@ export default function BrewDetailPage() {
         {!recipe && (
           <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">자유 모드</span>
         )}
+        <DeleteButton
+          className="ml-auto"
+          warning={
+            brew.feedback
+              ? "맛 평가도 같이 지워집니다. 이 기록으로 만든 레시피는 남습니다."
+              : "이 기록으로 만든 레시피는 남습니다."
+          }
+          onConfirm={async () => {
+            await api.deleteBrew(brew.brewId);
+            navigate("/history", { replace: true });
+          }}
+        />
       </div>
 
       <div className={`grid gap-3 ${recipe ? "grid-cols-3" : "grid-cols-2"}`}>

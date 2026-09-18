@@ -33,6 +33,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const body = await res.json().catch(() => ({}));
     throw new ApiError(formatError(body, res), res.status);
   }
+  // 삭제는 204로 본문이 없습니다. json()을 부르면 파싱 오류가 납니다.
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 
@@ -244,6 +246,8 @@ export const api = {
   listBeans: () => request<{ items: Bean[] }>("/api/beans"),
   createBean: (body: BeanCreate) =>
     request<Bean>("/api/beans", { method: "POST", body: JSON.stringify(body) }),
+  /** 원두만 지웁니다. 그 원두로 만든 레시피·기록은 남고 원두 이름만 빠집니다. */
+  deleteBean: (beanId: number) => request<void>(`/api/beans/${beanId}`, { method: "DELETE" }),
   generateRecipe: (body: RecipeRequest) =>
     request<Recipe>("/api/recipe/generate", {
       method: "POST",
@@ -263,6 +267,8 @@ export const api = {
   /** 최근 추출부터. 목록에는 곡선이 없습니다. */
   listBrews: () => request<{ items: BrewListItem[] }>("/api/brews"),
   getBrew: (brewId: number) => request<BrewDetail>(`/api/brews/${brewId}`),
+  /** 기록과 그 맛 평가를 지웁니다. 이 기록으로 만든 레시피는 남습니다. */
+  deleteBrew: (brewId: number) => request<void>(`/api/brews/${brewId}`, { method: "DELETE" }),
   /** 맛 평가를 보내고 보정된 레시피를 받습니다. 조정 규칙은 전부 서버에 있습니다. */
   adjustRecipe: (brewId: number, taste: TasteRating) =>
     request<AdjustResult>("/api/recipe/adjust", {
