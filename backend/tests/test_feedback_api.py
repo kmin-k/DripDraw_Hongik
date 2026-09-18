@@ -147,20 +147,23 @@ class TestRatioGuard:
         Ratio와 달리 이쪽은 문서에 없던 경로입니다. 대칭이라 같은 가드를 적용합니다.
         """
         brew_id, _ = brewed(client, **self.TIGHT)
-
-        first = adjust(client, brew_id, acidity="STRONG").json()  # 유량 7.0 → 6.5
-        assert first["recipe"]["flowRateGps"] == 6.5
-
         curve = brew_curve(TYPICAL, total_sec=150)
-        again = client.post(
-            "/api/brews",
-            json={"recipeId": first["suggestedRecipeId"], "actualCurve": curve, **TIMES},
-        ).json()["brewId"]
-        body = adjust(client, again, acidity="STRONG").json()  # 6.0이면 간격 초과
+
+        # 2차 물량 150 g. 7.0 → 6.5 → 6.0까지는 150 ÷ 6.0 = 25초로 간격과 같아 통과합니다.
+        recipe_id = None
+        for expected in (6.5, 6.0):
+            body = adjust(client, brew_id, acidity="STRONG").json()
+            assert body["recipe"]["flowRateGps"] == expected
+            recipe_id = body["suggestedRecipeId"]
+            brew_id = client.post(
+                "/api/brews", json={"recipeId": recipe_id, "actualCurve": curve, **TIMES}
+            ).json()["brewId"]
+
+        body = adjust(client, brew_id, acidity="STRONG").json()  # 5.5면 27.3초 → 간격 초과
 
         assert any("유량" in notice for notice in body["notices"])
         assert all(c["field"] != "flowRateGps" for c in body["changes"])
-        assert body["recipe"]["flowRateGps"] == 6.5
+        assert body["recipe"]["flowRateGps"] == 6.0
         # 막힌 것은 유량뿐입니다. 나머지 조정은 그대로 살아 있어야 합니다.
         assert any(c["field"] == "waterTempC" for c in body["changes"])
 

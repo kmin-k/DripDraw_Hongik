@@ -105,12 +105,12 @@ FastAPI가 `/docs`에 Swagger를 자동 생성하므로, **이 문서는 계약 
   "grindGuide": "현재 분쇄도 유지",
   "iceMessage": null,
   "pours": [
-    { "phase": "BLOOM",  "waterG": 56, "startSec": 0,   "endSec": 10  },
-    { "phase": "SECOND", "waterG": 98, "startSec": 35,  "endSec": 51  },
-    { "phase": "THIRD",  "waterG": 81, "startSec": 70,  "endSec": 84  },
-    { "phase": "FOURTH", "waterG": 65, "startSec": 105, "endSec": 116 }
+    { "phase": "BLOOM",  "waterG": 60,  "startSec": 0,   "endSec": 10  },
+    { "phase": "SECOND", "waterG": 100, "startSec": 35,  "endSec": 52  },
+    { "phase": "THIRD",  "waterG": 80,  "startSec": 70,  "endSec": 83  },
+    { "phase": "FOURTH", "waterG": 60,  "startSec": 105, "endSec": 115 }
   ],
-  "targetCurve": [[0,0],[10,56],[35,56],[51,154],[70,154],[84,235],[105,235],[116,300],[165,300]]
+  "targetCurve": [[0,0],[10,60],[35,60],[52,160],[70,160],[83,240],[105,240],[115,300],[165,300]]
 }
 ```
 

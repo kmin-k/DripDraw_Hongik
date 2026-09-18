@@ -67,6 +67,15 @@ def round_half_up(value: float) -> int:
     return int(Decimal(str(value)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
+def round_to_ten(value: float) -> int:
+    """10 g 단위 half-up 반올림 (8-3절).
+
+    주수 종료 물량에 씁니다. 실제로 73 g, 81 g까지 붓는 사람은 없고,
+    저울을 힐끗 보며 맞추는 숫자는 10 단위여야 읽힙니다.
+    """
+    return round_half_up(value / 10) * 10
+
+
 def _validate(dose_g: int, drink_type: str, roast_level: str, region: str, process: str) -> None:
     if not C.DOSE_MIN_G <= dose_g <= C.DOSE_MAX_G:
         raise RuleViolation(
@@ -132,10 +141,22 @@ def build_pour_plan(
 
     dose_g는 계산에 쓰지 않고 오류 메시지에만 씁니다. 사용자가 고칠 수 있는 값이 원두량이라서입니다.
     """
+    # 주수마다 "여기까지 부으세요"가 되는 **누적 종료 물량**을 10 g 단위로 맞추고,
+    # 각 주수 물량은 그 차이로 역산합니다. 총 물량은 Ratio 그대로 둡니다 — 피드백의
+    # Ratio ±0.5 보정이 원두량 13 g에서는 6.5 g 차이라 10 단위로 뭉개면 사라집니다 (8-3절).
     remaining = total_water_g - bloom_water_g
-    second = round_half_up(remaining * C.POUR_SPLIT[0])
-    third = round_half_up(remaining * C.POUR_SPLIT[1])
-    fourth = remaining - second - third  # 잔량. 반올림 오차를 흡수합니다 (8-3절).
+    after_second = round_to_ten(bloom_water_g + remaining * C.POUR_SPLIT[0])
+    after_third = round_to_ten(after_second + remaining * C.POUR_SPLIT[1])
+    second = after_second - bloom_water_g
+    third = after_third - after_second
+    fourth = total_water_g - after_third  # 잔량. 반올림 오차를 흡수합니다.
+
+    # 원두량 10~30 g 범위에서는 나올 수 없지만, 상수를 바꾸면 종료 물량이 겹칠 수 있습니다.
+    if min(second, third, fourth) <= 0:
+        raise RuleViolation(
+            f"주수 물량이 0 이하로 계산됐습니다 (bloom {bloom_water_g}, "
+            f"2차 {second}, 3차 {third}, 4차 {fourth}). 원두량 {dose_g} g을 확인하세요."
+        )
 
     # 8-1절: 한 번에 붓는 양이 많고 유량이 낮으면 푸어가 다음 주수 시작 시각을 넘겨
     # 타임라인이 역행하고 곡선이 깨집니다. 가장 많이 붓는 2차가 기준입니다.
@@ -199,7 +220,8 @@ def generate_recipe(
 
     # --- 물량 (4절, 6절) ---
     total_water = round_half_up(dose_g * ratio)
-    bloom_water = round_half_up(dose_g * C.BLOOM_MULTIPLIER[roast_level])
+    # Bloom도 1차 주수의 종료 물량이므로 10 단위입니다. 20 × 2.8 = 56 → 60.
+    bloom_water = round_to_ten(dose_g * C.BLOOM_MULTIPLIER[roast_level])
 
     # --- 유량과 타이밍 (5절, 6절) ---
     flow = _flow_rate(roast_level, region, drink_type, d50_um)
