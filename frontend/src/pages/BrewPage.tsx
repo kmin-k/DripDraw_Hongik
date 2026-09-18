@@ -474,8 +474,9 @@ export default function BrewPage() {
               따라간 목표가 없어 정확도는 기록되지 않습니다.
             </div>
           )}
-          {/* 맛 평가는 따라간 목표가 있어야 보정할 대상이 생깁니다. 자유 모드에는 띄우지 않습니다. */}
-          {recipe && (
+          {/* 맛 평가는 조정할 규칙 값(온도·유량·Ratio)이 있어야 합니다. 자유 모드는 목표가 없고,
+              기록으로 만든 레시피는 규칙 값이 없어 서버가 거절합니다. 둘 다 띄우지 않습니다. */}
+          {recipe && recipe.ratio !== null && (
             <Link
               to="/feedback"
               state={{ brewId: saved.brewId, recipe }}

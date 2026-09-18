@@ -332,8 +332,9 @@ export default function BrewDetailPage() {
             이 레시피로 다시 내리기
           </Link>
         )}
-        {/* 평가는 추출당 하나뿐입니다. 이미 했으면 누를 수 없는 버튼을 띄우지 않습니다. */}
-        {recipe && !brew.feedback && (
+        {/* 평가는 추출당 하나뿐입니다. 이미 했으면 누를 수 없는 버튼을 띄우지 않습니다.
+            기록으로 만든 레시피(ratio null)는 조정할 규칙 값이 없어 서버가 거절하므로 역시 띄우지 않습니다. */}
+        {recipe && recipe.ratio !== null && !brew.feedback && (
           <Link to="/feedback" state={{ brewId: brew.brewId, recipe }} className={btn}>
             맛 평가하기
           </Link>
