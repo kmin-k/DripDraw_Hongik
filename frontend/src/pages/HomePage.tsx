@@ -104,7 +104,9 @@ export default function HomePage() {
                 >
                   <div className="min-w-0">
                     <div className="truncate text-sm font-medium">
-                      {item.beanName ?? (item.freeMode ? "자유 모드" : "이름 없는 원두")}
+                      {item.recipeName ??
+                        item.beanName ??
+                        (item.freeMode ? "자유 모드" : "이름 없는 원두")}
                     </div>
                     <div className="text-xs text-slate-500">{formatDateTime(item.brewedAt)}</div>
                   </div>

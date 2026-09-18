@@ -28,6 +28,7 @@ erDiagram
         int bean_id FK "NULL 허용 — 원두 등록 없이 즉석 계산"
         int parent_recipe_id FK "보정 이전 레시피"
         string source "RULE_ENGINE|ADJUSTED|RECORDED"
+        string name "NULL 허용 — RECORDED에서 사용자가 붙인 이름"
         int dose_g "원두량"
         string drink_type "HOT|ICE"
         float total_water_g

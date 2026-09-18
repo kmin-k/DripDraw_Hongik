@@ -11,6 +11,7 @@ function brew(over: Partial<BrewListItem>): BrewListItem {
     durationSec: 165,
     finalWeightG: 300,
     recipeId: 1,
+    recipeName: null,
     beanName: "에티오피아 무라고",
     doseG: 20,
     totalWaterG: 300,
@@ -59,6 +60,14 @@ describe("buildTrend", () => {
     // 점이 하나면 추이가 아닙니다.
     const once = [brew({ brewId: 7, recipeId: 3, rmse: 6 })];
     expect(buildTrend(once)).toEqual([]);
+  });
+
+  it("사용자가 붙인 이름이 있으면 원두 이름보다 우선한다", () => {
+    const named = [
+      brew({ brewId: 1, recipeName: "주말 아침용", rmse: 9 }),
+      brew({ brewId: 2, recipeName: "주말 아침용", rmse: 4 }),
+    ];
+    expect(buildTrend(named)[0].label).toBe("주말 아침용");
   });
 
   it("원두를 등록하지 않았으면 레시피 번호로 부른다", () => {

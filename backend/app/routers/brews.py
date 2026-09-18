@@ -30,6 +30,9 @@ def _recipe_out(recipe: Recipe) -> RecipeOut:
     """저장된 레시피를 응답 형태로. RECORDED 레시피는 규칙 필드가 전부 None입니다."""
     return RecipeOut(
         recipe_id=recipe.id,
+        name=recipe.name,
+        bean_id=recipe.bean_id,
+        bean_name=recipe.bean.name if recipe.bean else None,
         water_temp_c=recipe.water_temp_c,
         total_water_g=int(recipe.total_water_g),
         ratio=recipe.ratio,
@@ -106,6 +109,7 @@ def list_brews(db: DbSession, limit: Annotated[int, Query(ge=1, le=200)] = 50) -
                 duration_sec=brew.duration_sec,
                 final_weight_g=brew.final_weight_g,
                 recipe_id=brew.recipe_id,
+                recipe_name=recipe.name if recipe else None,
                 bean_name=bean.name if bean else None,
                 dose_g=recipe.dose_g if recipe else None,
                 total_water_g=recipe.total_water_g if recipe else None,
@@ -169,6 +173,7 @@ def save_as_recipe(brew_id: int, payload: SaveAsRecipeRequest, db: DbSession) ->
             status.HTTP_404_NOT_FOUND, detail=f"bean_id {payload.bean_id} not found"
         )
 
+    # 곡선을 먼저 검사합니다. 실패하면 원두를 만들지 않아야 빈 원두가 남지 않습니다.
     target_curve = shape_target_curve(brew.actual_curve)
     if not target_curve:
         raise HTTPException(
@@ -176,11 +181,21 @@ def save_as_recipe(brew_id: int, payload: SaveAsRecipeRequest, db: DbSession) ->
             detail="주수 구간을 찾지 못했습니다. 물을 부은 기록이 있어야 저장할 수 있습니다.",
         )
 
+    # 원두를 먼저 등록하지 않고 내린 경우, 저장하면서 그 자리에서 등록합니다.
+    # 이렇게 만든 원두도 원두 목록과 레시피 화면의 선택지에 똑같이 나옵니다.
+    bean_id = payload.bean_id
+    if payload.new_bean is not None:
+        bean = Bean(**payload.new_bean.model_dump())
+        db.add(bean)
+        db.flush()  # id가 필요합니다. 레시피와 같은 트랜잭션으로 묶입니다.
+        bean_id = bean.id
+
     # RECORDED 레시피에는 Rule Engine이 계산하는 값(물 온도·유량·주수 배분)이 존재하지 않습니다.
     # 사용자가 손으로 부은 곡선에는 그런 규칙이 없기 때문입니다 (docs/erd.md).
     recipe = Recipe(
-        bean_id=payload.bean_id,
+        bean_id=bean_id,
         source="RECORDED",
+        name=payload.name.strip() if payload.name else None,
         dose_g=payload.dose_g,
         drink_type=payload.drink_type,
         total_water_g=target_curve[-1][1],
@@ -191,14 +206,4 @@ def save_as_recipe(brew_id: int, payload: SaveAsRecipeRequest, db: DbSession) ->
     db.commit()
     db.refresh(recipe)
 
-    return RecipeOut(
-        recipe_id=recipe.id,
-        water_temp_c=None,
-        total_water_g=recipe.total_water_g,
-        ratio=None,
-        flow_rate_gps=None,
-        grind_guide=None,
-        ice_message=None,
-        pours=[],
-        target_curve=target_curve,
-    )
+    return _recipe_out(recipe)

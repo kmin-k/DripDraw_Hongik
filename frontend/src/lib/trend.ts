@@ -28,7 +28,8 @@ export function buildTrend(items: BrewListItem[]): TrendSeries[] {
     if (item.recipeId === null || item.rmse === null) continue;
 
     const group = groups.get(item.recipeId) ?? {
-      label: item.beanName ?? `레시피 #${item.recipeId}`,
+      // 사용자가 붙인 이름 > 원두 이름 > 번호. 그래프 범례에 그대로 나갑니다.
+      label: item.recipeName ?? item.beanName ?? `레시피 #${item.recipeId}`,
       entries: [],
     };
     group.entries.push({ at: item.brewedAt, rmse: item.rmse });

@@ -108,6 +108,10 @@ export interface Recipe {
   totalWaterG: number;
   /** [[시간(초), 누적 물량(g)], ...] 구간 선형 곡선 */
   targetCurve: [number, number][];
+  /** 사용자가 붙인 이름. 자유 추출을 저장할 때만 생기고 규칙 레시피는 null입니다. */
+  name: string | null;
+  beanId: number | null;
+  beanName: string | null;
 
   /** 아래는 Rule Engine이 계산한 값. 기록(RECORDED) 레시피에는 없습니다. */
   waterTempC: number | null;
@@ -137,6 +141,21 @@ export interface BrewResult {
   finalWeightG: number;
 }
 
+/**
+ * 자유 추출을 목표로 저장할 때 보내는 것.
+ *
+ * 원두는 **기존 것을 고르거나(beanId) 그 자리에서 새로 등록(newBean)**합니다.
+ * 원두를 먼저 등록하지 않고 내린 뒤에 저장하는 경우를 위해서입니다. 둘을 함께 보내면 422.
+ */
+export interface SaveAsRecipeRequest {
+  doseG: number;
+  drinkType: DrinkType;
+  /** 레시피 이름. 자유 추출은 규칙이 없어 이름이 유일한 식별자입니다. */
+  name?: string | null;
+  beanId?: number | null;
+  newBean?: BeanCreate | null;
+}
+
 // --- 히스토리 (Phase 5) ---
 
 /**
@@ -152,6 +171,8 @@ export interface BrewListItem {
   finalWeightG: number;
   /** 따라간 목표 레시피. **같은 레시피끼리 묶어 정확도 추이를 보는 데 씁니다.** */
   recipeId: number | null;
+  /** 사용자가 붙인 레시피 이름. 자유 추출을 저장한 것에만 있습니다. */
+  recipeName: string | null;
   beanName: string | null;
   doseG: number | null;
   totalWaterG: number | null;
@@ -234,7 +255,7 @@ export const api = {
       body: JSON.stringify(body),
     }),
   /** 마음에 든 추출을 다음 목표로 저장합니다. 곡선 다듬기는 서버가 합니다. */
-  saveBrewAsRecipe: (brewId: number, body: { doseG: number; drinkType: DrinkType }) =>
+  saveBrewAsRecipe: (brewId: number, body: SaveAsRecipeRequest) =>
     request<Recipe>(`/api/brews/${brewId}/save-as-recipe`, {
       method: "POST",
       body: JSON.stringify(body),

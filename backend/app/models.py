@@ -41,6 +41,8 @@ class Recipe(Base):
     parent_recipe_id: Mapped[int | None] = mapped_column(ForeignKey("recipes.id"), default=None)
     # RULE_ENGINE: 규칙으로 생성 / ADJUSTED: 피드백으로 보정 / RECORDED: 사용자의 추출을 목표로 저장
     source: Mapped[str] = mapped_column(String(20), default="RULE_ENGINE")
+    # 사용자가 붙인 이름. 자유 추출을 목표로 저장할 때 받습니다. 규칙 레시피는 비워 둡니다.
+    name: Mapped[str | None] = mapped_column(String(100), default=None)
 
     # 입력
     dose_g: Mapped[int] = mapped_column(Integer)

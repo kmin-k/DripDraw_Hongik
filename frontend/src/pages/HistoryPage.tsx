@@ -182,7 +182,17 @@ export default function HistoryPage() {
                     </Link>
                   </td>
                   <td className="px-3 py-2 text-slate-600">
-                    {item.beanName ?? <span className="text-slate-400">—</span>}
+                    {/* 이름을 붙인 레시피는 이름이 먼저. 원두는 그 아래에 작게. */}
+                    {item.recipeName ? (
+                      <>
+                        <span className="text-slate-900">{item.recipeName}</span>
+                        {item.beanName && (
+                          <span className="block text-xs text-slate-500">{item.beanName}</span>
+                        )}
+                      </>
+                    ) : (
+                      (item.beanName ?? <span className="text-slate-400">—</span>)
+                    )}
                     {item.freeMode && (
                       <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">
                         자유
