@@ -4,6 +4,7 @@ import {
   CartesianGrid,
   Line,
   LineChart,
+  ReferenceArea,
   ReferenceDot,
   ResponsiveContainer,
   Tooltip,
@@ -243,42 +244,66 @@ export default function BrewPage() {
         </div>
       )}
 
+      {/* 추출 중에는 저울과 드리퍼를 보다가 **힐끗** 보는 화면입니다.
+          읽는 시간이 0.5초라고 가정하고, 실제선은 굵게·목표선은 배경으로 물러나게 두고
+          "지금 어디"와 "지금 부을 구간"만 튀게 합니다. */}
       <div className="rounded border bg-white p-4">
         <div className="mb-2 flex items-center gap-4 text-xs text-slate-600">
           {recipe && (
             <span className="flex items-center gap-1">
-              <span className="inline-block h-0 w-5 border-t-2 border-dashed border-slate-400" />
+              <span className="inline-block h-0 w-5 border-t-2 border-dashed border-slate-500" />
               목표
             </span>
           )}
           <span className="flex items-center gap-1">
-            <span className="inline-block h-0 w-5 border-t-2 border-emerald-600" />
+            <span className="inline-block h-0 w-5 border-t-4 border-emerald-600" />
             실제
           </span>
+          {recipe && (running || paused) && (
+            <span className="flex items-center gap-1">
+              <span className="inline-block h-3 w-5 rounded-sm bg-amber-100" />
+              지금 부을 구간
+            </span>
+          )}
         </div>
-        <ResponsiveContainer width="100%" height={280}>
-          <LineChart data={brew.chartData} margin={{ top: 5, right: 10, bottom: 5, left: -20 }}>
-            <CartesianGrid stroke="#e2e8f0" />
+        <ResponsiveContainer width="100%" height={320}>
+          {/* 위·오른쪽 여백은 "완성 300 g" 라벨 자리입니다. 완성점이 늘 오른쪽 끝이라 좁으면 잘립니다. */}
+          <LineChart data={brew.chartData} margin={{ top: 24, right: 44, bottom: 5, left: -20 }}>
+            {/* 세로선은 뺍니다. 주수 지점 라벨과 겹쳐 선처럼 읽힙니다. */}
+            <CartesianGrid stroke="#eef2f7" vertical={false} />
             {/* 목표가 없는 자유 모드에서는 실측 마지막 시각이 그대로 눈금이 됩니다. */}
             <XAxis
               dataKey="sec"
               type="number"
               domain={[0, "dataMax"]}
               tickFormatter={(v) => Number(v).toFixed(0)}
-              fontSize={12}
+              fontSize={13}
             />
-            <YAxis fontSize={12} />
+            <YAxis fontSize={13} />
             <Tooltip
               formatter={(value, name) => [`${Number(value).toFixed(1)} g`, name]}
               labelFormatter={(v) => `${Number(v).toFixed(0)}초`}
             />
+
+            {/* 지금 부어야 할 주수 구간. 위 검은 카드가 가리키는 것과 같은 구간입니다.
+                지난 구간과 앞 구간은 칠하지 않아 "여기"가 하나만 남습니다. */}
+            {recipe && (running || paused) && upcoming && (
+              <ReferenceArea
+                x1={upcoming.startSec}
+                x2={upcoming.sec}
+                fill="#fef3c7"
+                fillOpacity={0.6}
+                stroke="none"
+              />
+            )}
+
             {/* 목표는 구간 선형이므로 곡선 보간을 쓰면 실제 규칙과 다른 모양이 됩니다. */}
             {recipe && (
               <Line
                 type="linear"
                 dataKey="target"
                 name="목표"
-                stroke="#94a3b8"
+                stroke="#64748b"
                 strokeWidth={2}
                 strokeDasharray="6 4"
                 dot={false}
@@ -291,11 +316,25 @@ export default function BrewPage() {
               dataKey="actual"
               name="실제"
               stroke="#059669"
-              strokeWidth={2}
+              strokeWidth={4}
+              strokeLinecap="round"
               dot={false}
               connectNulls
               isAnimationActive={false}
             />
+
+            {/* 실제선의 끝 — 지금 위치. 붓는 동안 계속 움직여 눈이 따라갑니다.
+                선 끝을 찾는 대신 이 점만 보면 목표보다 위인지 아래인지 바로 읽힙니다. */}
+            {(running || paused) && (
+              <ReferenceDot
+                x={brew.elapsedSec}
+                y={brew.weightG}
+                r={7}
+                fill="#059669"
+                stroke="#fff"
+                strokeWidth={3}
+              />
+            )}
 
             {/* 주수마다 두 지점을 찍습니다.
                 **시작에는 시간**(언제 붓기 시작하는지), **끝에는 물량**(얼마까지 붓는지).
@@ -315,7 +354,7 @@ export default function BrewPage() {
                   // 시작점은 아래에 둡니다. 위에 두면 직전 주수의 물량 표시와 겹칩니다.
                   position: "bottom",
                   offset: 8,
-                  fontSize: 11,
+                  fontSize: 12,
                   fill: brew.elapsedSec >= pour.startSec ? "#94a3b8" : "#475569",
                 }}
               />,
@@ -331,9 +370,9 @@ export default function BrewPage() {
                   value: `${pour.gram} g`,
                   position: "top",
                   offset: 8,
-                  fontSize: 12,
+                  fontSize: 14,
                   fill: brew.elapsedSec >= pour.sec ? "#94a3b8" : "#0f172a",
-                  fontWeight: brew.elapsedSec >= pour.sec ? 400 : 600,
+                  fontWeight: brew.elapsedSec >= pour.sec ? 400 : 700,
                 }}
               />,
             ])}
@@ -350,11 +389,13 @@ export default function BrewPage() {
                 strokeWidth={1.5}
                 label={{
                   value: `완성 ${finishPoint.gram} g`,
-                  position: "top",
-                  offset: 8,
-                  fontSize: 12,
+                  // 완성점은 늘 그래프 오른쪽 끝이라 위·오른쪽에 두면 잘립니다.
+                  // 드립다운 구간은 수평선이라 그 아래가 비어 있습니다.
+                  position: "bottom",
+                  offset: 10,
+                  fontSize: 14,
                   fill: brew.elapsedSec >= finishPoint.sec ? "#94a3b8" : "#0f172a",
-                  fontWeight: brew.elapsedSec >= finishPoint.sec ? 400 : 600,
+                  fontWeight: brew.elapsedSec >= finishPoint.sec ? 400 : 700,
                 }}
               />
             )}
