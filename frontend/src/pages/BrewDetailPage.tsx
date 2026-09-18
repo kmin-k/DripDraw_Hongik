@@ -63,6 +63,20 @@ export default function BrewDetailPage() {
   const [saveFormOpen, setSaveFormOpen] = useState(false);
   const [savedRecipe, setSavedRecipe] = useState<Recipe | null>(null);
 
+  // 목록·상세 응답에는 번호만 있는 레시피(보정 제안, 이전에 저장한 목표)를 열 때 씁니다.
+  // 곡선은 상세에서 가져와야 추출 화면에 넘길 수 있습니다.
+  const [opening, setOpening] = useState<number | null>(null);
+  const brewWithRecipe = async (recipeId: number) => {
+    setOpening(recipeId);
+    try {
+      const recipe = await api.getRecipe(recipeId);
+      navigate("/brew", { state: { recipe } });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setOpening(null);
+    }
+  };
+
   // 주소가 숫자인지는 렌더 중에 알 수 있습니다. 상태로 두면 불필요한 재렌더가 생깁니다.
   const id = Number(brewId);
   const validId = Number.isInteger(id) && id > 0;
@@ -270,17 +284,49 @@ export default function BrewDetailPage() {
           </div>
           <div className="mt-2 text-xs text-slate-500">
             {brew.feedback.applied === true
-              ? `보정 레시피 #${brew.feedback.suggestedRecipeId}를 적용했습니다.`
+              ? "보정 레시피를 적용했습니다."
               : brew.feedback.applied === false
                 ? "보정을 적용하지 않고 기존 레시피를 유지했습니다."
                 : "보정을 제안받았지만 적용 여부를 고르지 않았습니다."}
           </div>
+          {/* 이 링크가 없으면 보정 레시피는 평가 화면을 벗어나는 순간 잃어버립니다.
+              "추출 → 평가 → 보정 → 다시 내리기" 루프가 다음 날에도 이어지는 지점입니다.
+              제안 레시피가 삭제됐으면 번호가 null이라 띄우지 않습니다. */}
+          {brew.feedback.suggestedRecipeId !== null && (
+            <button
+              onClick={() => brewWithRecipe(brew.feedback!.suggestedRecipeId!)}
+              disabled={opening !== null}
+              className="mt-2 rounded bg-sky-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+            >
+              {opening === brew.feedback.suggestedRecipeId ? "여는 중…" : "보정 레시피로 내리기"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* 이전에 이미 목표로 저장한 기록. 또 저장하면 서버가 409로 거절하므로 폼 대신 링크를 둡니다. */}
+      {!recipe && !savedRecipe && brew.savedRecipeId !== null && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded border bg-white p-4 text-sm">
+          <div>
+            <div className="font-medium">
+              이미 목표로 저장했습니다
+              {brew.savedRecipeName ? ` — ${brew.savedRecipeName}` : ""}
+            </div>
+            <div className="mt-0.5 text-xs text-slate-500">레시피 탭에서도 찾을 수 있습니다.</div>
+          </div>
+          <button
+            onClick={() => brewWithRecipe(brew.savedRecipeId!)}
+            disabled={opening !== null}
+            className={btnPrimary}
+          >
+            {opening === brew.savedRecipeId ? "여는 중…" : "이 목표로 내리기"}
+          </button>
         </div>
       )}
 
       {/* 자유 모드는 따라간 목표가 없어 "다시 내리기"도 "맛 평가"도 성립하지 않습니다.
           대신 목표로 저장해 두면 다음부터는 같은 곡선을 따라 내릴 수 있습니다. */}
-      {!recipe && !savedRecipe && (
+      {!recipe && !savedRecipe && brew.savedRecipeId === null && (
         <div className="rounded border bg-white p-4">
           {!saveFormOpen ? (
             <div className="flex flex-wrap items-center justify-between gap-3">
