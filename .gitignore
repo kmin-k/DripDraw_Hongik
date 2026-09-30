@@ -3,6 +3,8 @@ node_modules/
 dist/
 .vite/
 coverage/
+# tsc -b가 남기는 증분 빌드 캐시. npm run build를 돌리면 생깁니다.
+*.tsbuildinfo
 
 # Backend / Python
 __pycache__/

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   CartesianGrid,
   Line,
@@ -10,7 +10,9 @@ import {
   YAxis,
 } from "recharts";
 
-import { ApiError, api, type BrewDetail, type DrinkType, type Recipe } from "../lib/api";
+import DeleteButton from "../components/DeleteButton";
+import SaveAsRecipeForm from "../components/SaveAsRecipeForm";
+import { ApiError, api, type BrewDetail, type Recipe } from "../lib/api";
 import { formatDateTime, formatDuration } from "../lib/format";
 import { downsample } from "../lib/useBrewSession";
 import { interpolateAt } from "../lib/rmse";
@@ -53,31 +55,25 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 export default function BrewDetailPage() {
   const { brewId } = useParams();
+  const navigate = useNavigate();
   const [brew, setBrew] = useState<BrewDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // 자유 모드 추출을 다음 목표로 저장하는 흐름.
-  // 자유 모드는 원두량·음용 방식을 받지 않았으므로 저장 시점에 물어봅니다.
-  const [asRecipe, setAsRecipe] = useState({
-    open: false,
-    doseG: 20,
-    drinkType: "HOT" as DrinkType,
-  });
+  // 자유 모드 추출을 다음 목표로 저장하는 흐름. 폼 자체는 SaveAsRecipeForm에 있습니다.
+  const [saveFormOpen, setSaveFormOpen] = useState(false);
   const [savedRecipe, setSavedRecipe] = useState<Recipe | null>(null);
-  const [recipeError, setRecipeError] = useState<string | null>(null);
 
-  const saveAsRecipe = async () => {
-    if (!brew) return;
-    setRecipeError(null);
+  // 목록·상세 응답에는 번호만 있는 레시피(보정 제안, 이전에 저장한 목표)를 열 때 씁니다.
+  // 곡선은 상세에서 가져와야 추출 화면에 넘길 수 있습니다.
+  const [opening, setOpening] = useState<number | null>(null);
+  const brewWithRecipe = async (recipeId: number) => {
+    setOpening(recipeId);
     try {
-      setSavedRecipe(
-        await api.saveBrewAsRecipe(brew.brewId, {
-          doseG: asRecipe.doseG,
-          drinkType: asRecipe.drinkType,
-        }),
-      );
+      const recipe = await api.getRecipe(recipeId);
+      navigate("/brew", { state: { recipe } });
     } catch (err) {
-      setRecipeError(err instanceof Error ? err.message : String(err));
+      setError(err instanceof Error ? err.message : String(err));
+      setOpening(null);
     }
   };
 
@@ -162,6 +158,18 @@ export default function BrewDetailPage() {
         {!recipe && (
           <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">자유 모드</span>
         )}
+        <DeleteButton
+          className="ml-auto"
+          warning={
+            brew.feedback
+              ? "맛 평가도 같이 지워집니다. 이 기록으로 만든 레시피는 남습니다."
+              : "이 기록으로 만든 레시피는 남습니다."
+          }
+          onConfirm={async () => {
+            await api.deleteBrew(brew.brewId);
+            navigate("/history", { replace: true });
+          }}
+        />
       </div>
 
       <div className={`grid gap-3 ${recipe ? "grid-cols-3" : "grid-cols-2"}`}>
@@ -233,7 +241,10 @@ export default function BrewDetailPage() {
 
       {recipe && (
         <div className="rounded border bg-white p-4 text-sm">
-          <h2 className="mb-2 font-semibold">이때의 레시피</h2>
+          <h2 className="mb-2 font-semibold">
+            이때의 레시피
+            {recipe.name && <span className="ml-2 font-normal text-slate-700">{recipe.name}</span>}
+          </h2>
           <div className="flex flex-wrap gap-x-6 gap-y-1 text-slate-600">
             <span>
               총 물량 <b className="text-slate-900">{recipe.totalWaterG} g</b>
@@ -273,19 +284,51 @@ export default function BrewDetailPage() {
           </div>
           <div className="mt-2 text-xs text-slate-500">
             {brew.feedback.applied === true
-              ? `보정 레시피 #${brew.feedback.suggestedRecipeId}를 적용했습니다.`
+              ? "보정 레시피를 적용했습니다."
               : brew.feedback.applied === false
                 ? "보정을 적용하지 않고 기존 레시피를 유지했습니다."
                 : "보정을 제안받았지만 적용 여부를 고르지 않았습니다."}
           </div>
+          {/* 이 링크가 없으면 보정 레시피는 평가 화면을 벗어나는 순간 잃어버립니다.
+              "추출 → 평가 → 보정 → 다시 내리기" 루프가 다음 날에도 이어지는 지점입니다.
+              제안 레시피가 삭제됐으면 번호가 null이라 띄우지 않습니다. */}
+          {brew.feedback.suggestedRecipeId !== null && (
+            <button
+              onClick={() => brewWithRecipe(brew.feedback!.suggestedRecipeId!)}
+              disabled={opening !== null}
+              className="mt-2 rounded bg-sky-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+            >
+              {opening === brew.feedback.suggestedRecipeId ? "여는 중…" : "보정 레시피로 내리기"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* 이전에 이미 목표로 저장한 기록. 또 저장하면 서버가 409로 거절하므로 폼 대신 링크를 둡니다. */}
+      {!recipe && !savedRecipe && brew.savedRecipeId !== null && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded border bg-white p-4 text-sm">
+          <div>
+            <div className="font-medium">
+              이미 목표로 저장했습니다
+              {brew.savedRecipeName ? ` — ${brew.savedRecipeName}` : ""}
+            </div>
+            <div className="mt-0.5 text-xs text-slate-500">레시피 탭에서도 찾을 수 있습니다.</div>
+          </div>
+          <button
+            onClick={() => brewWithRecipe(brew.savedRecipeId!)}
+            disabled={opening !== null}
+            className={btnPrimary}
+          >
+            {opening === brew.savedRecipeId ? "여는 중…" : "이 목표로 내리기"}
+          </button>
         </div>
       )}
 
       {/* 자유 모드는 따라간 목표가 없어 "다시 내리기"도 "맛 평가"도 성립하지 않습니다.
           대신 목표로 저장해 두면 다음부터는 같은 곡선을 따라 내릴 수 있습니다. */}
-      {!recipe && !savedRecipe && (
+      {!recipe && !savedRecipe && brew.savedRecipeId === null && (
         <div className="rounded border bg-white p-4">
-          {!asRecipe.open ? (
+          {!saveFormOpen ? (
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="text-sm">
                 <div className="font-medium">이 추출이 마음에 드셨나요?</div>
@@ -293,57 +336,29 @@ export default function BrewDetailPage() {
                   목표로 저장해두면 다음에 같은 곡선을 따라 내릴 수 있습니다.
                 </div>
               </div>
-              <button
-                onClick={() => setAsRecipe((p) => ({ ...p, open: true }))}
-                className={btnPrimary}
-              >
+              <button onClick={() => setSaveFormOpen(true)} className={btnPrimary}>
                 목표로 저장
               </button>
             </div>
           ) : (
-            <div className="flex flex-wrap items-end gap-3">
-              <label className="text-sm">
-                <span className="mb-1 block text-slate-600">원두량 (g)</span>
-                <input
-                  type="number"
-                  min={10}
-                  max={30}
-                  value={asRecipe.doseG}
-                  onChange={(e) => setAsRecipe((p) => ({ ...p, doseG: Number(e.target.value) }))}
-                  className="w-24 rounded border border-slate-300 px-2 py-1.5 text-sm"
-                />
-              </label>
-              <label className="text-sm">
-                <span className="mb-1 block text-slate-600">음용 방식</span>
-                <select
-                  value={asRecipe.drinkType}
-                  onChange={(e) =>
-                    setAsRecipe((p) => ({ ...p, drinkType: e.target.value as DrinkType }))
-                  }
-                  className="rounded border border-slate-300 px-2 py-1.5 text-sm"
-                >
-                  <option value="HOT">핫</option>
-                  <option value="ICE">아이스</option>
-                </select>
-              </label>
-              <button onClick={saveAsRecipe} className={btnPrimary}>
-                저장
-              </button>
-              <button onClick={() => setAsRecipe((p) => ({ ...p, open: false }))} className={btn}>
-                취소
-              </button>
-            </div>
+            <SaveAsRecipeForm
+              brewId={brew.brewId}
+              onSaved={setSavedRecipe}
+              onCancel={() => setSaveFormOpen(false)}
+            />
           )}
-          <p className="mt-2 text-xs text-slate-500">
-            실측 그대로가 아니라 <b>주수 구간만 뽑아 따라 하기 쉬운 곡선</b>으로 다듬어 저장합니다.
-          </p>
-          {recipeError && <p className="mt-2 text-sm text-red-700">{recipeError}</p>}
         </div>
       )}
 
       {savedRecipe && (
         <div className="rounded border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
-          <div className="font-medium">목표로 저장했습니다 (레시피 #{savedRecipe.recipeId})</div>
+          <div className="font-medium">
+            목표로 저장했습니다
+            {savedRecipe.name ? ` — ${savedRecipe.name}` : ` (레시피 #${savedRecipe.recipeId})`}
+          </div>
+          {savedRecipe.beanName && (
+            <div className="mt-0.5 text-xs text-sky-800">원두: {savedRecipe.beanName}</div>
+          )}
           <div className="mt-1">
             {savedRecipe.targetCurve.length}점으로 다듬었습니다 · 총 {savedRecipe.totalWaterG} g
           </div>
@@ -363,8 +378,9 @@ export default function BrewDetailPage() {
             이 레시피로 다시 내리기
           </Link>
         )}
-        {/* 평가는 추출당 하나뿐입니다. 이미 했으면 누를 수 없는 버튼을 띄우지 않습니다. */}
-        {recipe && !brew.feedback && (
+        {/* 평가는 추출당 하나뿐입니다. 이미 했으면 누를 수 없는 버튼을 띄우지 않습니다.
+            기록으로 만든 레시피(ratio null)는 조정할 규칙 값이 없어 서버가 거절하므로 역시 띄우지 않습니다. */}
+        {recipe && recipe.ratio !== null && !brew.feedback && (
           <Link to="/feedback" state={{ brewId: brew.brewId, recipe }} className={btn}>
             맛 평가하기
           </Link>

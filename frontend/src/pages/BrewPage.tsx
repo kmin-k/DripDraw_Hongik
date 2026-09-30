@@ -4,6 +4,7 @@ import {
   CartesianGrid,
   Line,
   LineChart,
+  ReferenceArea,
   ReferenceDot,
   ResponsiveContainer,
   Tooltip,
@@ -13,10 +14,11 @@ import {
 
 import type { ScaleStatus } from "../ble/types";
 import { useScale } from "../ble/useScale";
-import { api, type BrewResult, type DrinkType, type Recipe } from "../lib/api";
+import SaveAsRecipeForm from "../components/SaveAsRecipeForm";
+import { api, type BrewResult, type Recipe } from "../lib/api";
 import { brewEnd, nextPourTarget, pourTargets } from "../lib/pours";
 import type { Curve } from "../lib/rmse";
-import { useBrewSession } from "../lib/useBrewSession";
+import { DROP_ABORT_G, useBrewSession } from "../lib/useBrewSession";
 
 /**
  * 데모 시나리오 3번 — 시연 성패를 가르는 화면.
@@ -70,30 +72,9 @@ export default function BrewPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // 마음에 든 추출을 다음 목표로 저장하는 흐름.
-  // 자유 모드는 원두량·음용 방식을 받지 않았으므로 여기서 물어봅니다.
-  const [asRecipe, setAsRecipe] = useState({
-    open: false,
-    doseG: 20,
-    drinkType: "HOT" as DrinkType,
-  });
+  // 마음에 든 추출을 다음 목표로 저장하는 흐름. 폼 자체는 SaveAsRecipeForm에 있습니다.
+  const [saveFormOpen, setSaveFormOpen] = useState(false);
   const [savedRecipe, setSavedRecipe] = useState<Recipe | null>(null);
-  const [recipeError, setRecipeError] = useState<string | null>(null);
-
-  const saveAsRecipe = async () => {
-    if (!saved) return;
-    setRecipeError(null);
-    try {
-      setSavedRecipe(
-        await api.saveBrewAsRecipe(saved.brewId, {
-          doseG: asRecipe.doseG,
-          drinkType: asRecipe.drinkType,
-        }),
-      );
-    } catch (err) {
-      setRecipeError(err instanceof Error ? err.message : String(err));
-    }
-  };
 
   /**
    * 추출 시작 — 저울 타이머도 함께 켭니다.
@@ -108,6 +89,14 @@ export default function BrewPage() {
     brew.start();
     void scale.resetTimer().then(() => scale.startTimer());
   };
+
+  // 측정이 끊기면(저울 영점 등) 저울 타이머도 멈춥니다. 화면은 멈췄는데 저울만 돌면 헷갈립니다.
+  const registerAbort = brew.onAbort;
+  const stopTimer = scale.stopTimer;
+  useEffect(() => {
+    registerAbort(() => void stopTimer());
+    return () => registerAbort(null);
+  }, [registerAbort, stopTimer]);
 
   // 아래 자동 시작 effect가 쓰는 값들. 훅 목록에 넣기 좋게 따로 꺼내 둡니다.
   const phaseNow = brew.phase;
@@ -156,8 +145,7 @@ export default function BrewPage() {
     setSaved(null);
     setSaveError(null);
     setSavedRecipe(null);
-    setRecipeError(null);
-    setAsRecipe((prev) => ({ ...prev, open: false }));
+    setSaveFormOpen(false);
     brew.reset();
     void scale.resetTimer();
   };
@@ -172,6 +160,7 @@ export default function BrewPage() {
   const running = brew.phase === "RUNNING";
   const paused = brew.phase === "PAUSED";
   const finished = brew.phase === "FINISHED";
+  const aborted = brew.phase === "ABORTED";
 
   // 새로고침이나 직접 진입이면 넘겨받은 상태가 없습니다. 어느 모드인지 알 수 없으니 되돌립니다.
   if (!recipe && !freeMode) {
@@ -264,42 +253,66 @@ export default function BrewPage() {
         </div>
       )}
 
+      {/* 추출 중에는 저울과 드리퍼를 보다가 **힐끗** 보는 화면입니다.
+          읽는 시간이 0.5초라고 가정하고, 실제선은 굵게·목표선은 배경으로 물러나게 두고
+          "지금 어디"와 "지금 부을 구간"만 튀게 합니다. */}
       <div className="rounded border bg-white p-4">
         <div className="mb-2 flex items-center gap-4 text-xs text-slate-600">
           {recipe && (
             <span className="flex items-center gap-1">
-              <span className="inline-block h-0 w-5 border-t-2 border-dashed border-slate-400" />
+              <span className="inline-block h-0 w-5 border-t-2 border-dashed border-slate-500" />
               목표
             </span>
           )}
           <span className="flex items-center gap-1">
-            <span className="inline-block h-0 w-5 border-t-2 border-emerald-600" />
+            <span className="inline-block h-0 w-5 border-t-4 border-emerald-600" />
             실제
           </span>
+          {recipe && (running || paused) && (
+            <span className="flex items-center gap-1">
+              <span className="inline-block h-3 w-5 rounded-sm bg-amber-100" />
+              지금 부을 구간
+            </span>
+          )}
         </div>
-        <ResponsiveContainer width="100%" height={280}>
-          <LineChart data={brew.chartData} margin={{ top: 5, right: 10, bottom: 5, left: -20 }}>
-            <CartesianGrid stroke="#e2e8f0" />
+        <ResponsiveContainer width="100%" height={320}>
+          {/* 위·오른쪽 여백은 "완성 300 g" 라벨 자리입니다. 완성점이 늘 오른쪽 끝이라 좁으면 잘립니다. */}
+          <LineChart data={brew.chartData} margin={{ top: 24, right: 44, bottom: 5, left: -20 }}>
+            {/* 세로선은 뺍니다. 주수 지점 라벨과 겹쳐 선처럼 읽힙니다. */}
+            <CartesianGrid stroke="#eef2f7" vertical={false} />
             {/* 목표가 없는 자유 모드에서는 실측 마지막 시각이 그대로 눈금이 됩니다. */}
             <XAxis
               dataKey="sec"
               type="number"
               domain={[0, "dataMax"]}
               tickFormatter={(v) => Number(v).toFixed(0)}
-              fontSize={12}
+              fontSize={13}
             />
-            <YAxis fontSize={12} />
+            <YAxis fontSize={13} />
             <Tooltip
               formatter={(value, name) => [`${Number(value).toFixed(1)} g`, name]}
               labelFormatter={(v) => `${Number(v).toFixed(0)}초`}
             />
+
+            {/* 지금 부어야 할 주수 구간. 위 검은 카드가 가리키는 것과 같은 구간입니다.
+                지난 구간과 앞 구간은 칠하지 않아 "여기"가 하나만 남습니다. */}
+            {recipe && (running || paused) && upcoming && (
+              <ReferenceArea
+                x1={upcoming.startSec}
+                x2={upcoming.sec}
+                fill="#fef3c7"
+                fillOpacity={0.6}
+                stroke="none"
+              />
+            )}
+
             {/* 목표는 구간 선형이므로 곡선 보간을 쓰면 실제 규칙과 다른 모양이 됩니다. */}
             {recipe && (
               <Line
                 type="linear"
                 dataKey="target"
                 name="목표"
-                stroke="#94a3b8"
+                stroke="#64748b"
                 strokeWidth={2}
                 strokeDasharray="6 4"
                 dot={false}
@@ -312,11 +325,25 @@ export default function BrewPage() {
               dataKey="actual"
               name="실제"
               stroke="#059669"
-              strokeWidth={2}
+              strokeWidth={4}
+              strokeLinecap="round"
               dot={false}
               connectNulls
               isAnimationActive={false}
             />
+
+            {/* 실제선의 끝 — 지금 위치. 붓는 동안 계속 움직여 눈이 따라갑니다.
+                선 끝을 찾는 대신 이 점만 보면 목표보다 위인지 아래인지 바로 읽힙니다. */}
+            {(running || paused) && (
+              <ReferenceDot
+                x={brew.elapsedSec}
+                y={brew.weightG}
+                r={7}
+                fill="#059669"
+                stroke="#fff"
+                strokeWidth={3}
+              />
+            )}
 
             {/* 주수마다 두 지점을 찍습니다.
                 **시작에는 시간**(언제 붓기 시작하는지), **끝에는 물량**(얼마까지 붓는지).
@@ -336,7 +363,7 @@ export default function BrewPage() {
                   // 시작점은 아래에 둡니다. 위에 두면 직전 주수의 물량 표시와 겹칩니다.
                   position: "bottom",
                   offset: 8,
-                  fontSize: 11,
+                  fontSize: 12,
                   fill: brew.elapsedSec >= pour.startSec ? "#94a3b8" : "#475569",
                 }}
               />,
@@ -352,9 +379,9 @@ export default function BrewPage() {
                   value: `${pour.gram} g`,
                   position: "top",
                   offset: 8,
-                  fontSize: 12,
+                  fontSize: 14,
                   fill: brew.elapsedSec >= pour.sec ? "#94a3b8" : "#0f172a",
-                  fontWeight: brew.elapsedSec >= pour.sec ? 400 : 600,
+                  fontWeight: brew.elapsedSec >= pour.sec ? 400 : 700,
                 }}
               />,
             ])}
@@ -371,17 +398,31 @@ export default function BrewPage() {
                 strokeWidth={1.5}
                 label={{
                   value: `완성 ${finishPoint.gram} g`,
-                  position: "top",
-                  offset: 8,
-                  fontSize: 12,
+                  // 완성점은 늘 그래프 오른쪽 끝이라 위·오른쪽에 두면 잘립니다.
+                  // 드립다운 구간은 수평선이라 그 아래가 비어 있습니다.
+                  position: "bottom",
+                  offset: 10,
+                  fontSize: 14,
                   fill: brew.elapsedSec >= finishPoint.sec ? "#94a3b8" : "#0f172a",
-                  fontWeight: brew.elapsedSec >= finishPoint.sec ? 400 : 600,
+                  fontWeight: brew.elapsedSec >= finishPoint.sec ? 400 : 700,
                 }}
               />
             )}
           </LineChart>
         </ResponsiveContainer>
       </div>
+
+      {/* 측정이 끊긴 뒤의 값은 어느 것도 믿을 수 없어 저장 버튼 자체를 두지 않습니다.
+          "고쳐서 이어가는" 척하면 기록이 오염되는데 화면은 멀쩡해 보여 더 위험합니다. */}
+      {aborted && (
+        <div className="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          <div className="font-medium">저울 영점이 눌려 측정이 끊겼습니다</div>
+          <div className="mt-1 text-red-700">
+            무게가 갑자기 {DROP_ABORT_G} g 넘게 떨어졌습니다. 추출 중에는 저울의 영점 버튼을
+            누르거나 드리퍼를 들어올리면 안 됩니다. 이 추출은 저장할 수 없습니다.
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2">
         {!connected ? (
@@ -454,8 +495,9 @@ export default function BrewPage() {
               따라간 목표가 없어 정확도는 기록되지 않습니다.
             </div>
           )}
-          {/* 맛 평가는 따라간 목표가 있어야 보정할 대상이 생깁니다. 자유 모드에는 띄우지 않습니다. */}
-          {recipe && (
+          {/* 맛 평가는 조정할 규칙 값(온도·유량·Ratio)이 있어야 합니다. 자유 모드는 목표가 없고,
+              기록으로 만든 레시피는 규칙 값이 없어 서버가 거절합니다. 둘 다 띄우지 않습니다. */}
+          {recipe && recipe.ratio !== null && (
             <Link
               to="/feedback"
               state={{ brewId: saved.brewId, recipe }}
@@ -470,7 +512,7 @@ export default function BrewPage() {
       {/* 마음에 든 추출을 다음 목표로 저장 — Rule Engine 없이 재현 루프를 닫는 경로 */}
       {finished && saved && !savedRecipe && (
         <div className="rounded border bg-white p-4">
-          {!asRecipe.open ? (
+          {!saveFormOpen ? (
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="text-sm">
                 <div className="font-medium">이 추출이 마음에 드셨나요?</div>
@@ -478,57 +520,32 @@ export default function BrewPage() {
                   목표로 저장해두면 다음에 같은 곡선을 따라 내릴 수 있습니다.
                 </div>
               </div>
-              <button onClick={() => setAsRecipe((p) => ({ ...p, open: true }))} className={btn}>
+              <button onClick={() => setSaveFormOpen(true)} className={btn}>
                 목표로 저장
               </button>
             </div>
           ) : (
-            <div className="space-y-3">
-              <div className="text-sm font-medium">이 추출을 목표로 저장</div>
-              <div className="flex flex-wrap items-end gap-3">
-                <label className="text-sm">
-                  <span className="mb-1 block text-slate-600">원두량 {asRecipe.doseG} g</span>
-                  <input
-                    type="range"
-                    min={10}
-                    max={30}
-                    value={asRecipe.doseG}
-                    onChange={(e) => setAsRecipe((p) => ({ ...p, doseG: Number(e.target.value) }))}
-                  />
-                </label>
-                <label className="text-sm">
-                  <span className="mb-1 block text-slate-600">음용 방식</span>
-                  <select
-                    value={asRecipe.drinkType}
-                    onChange={(e) =>
-                      setAsRecipe((p) => ({ ...p, drinkType: e.target.value as DrinkType }))
-                    }
-                    className="rounded border border-slate-300 px-2 py-1.5 text-sm"
-                  >
-                    <option value="HOT">핫</option>
-                    <option value="ICE">아이스</option>
-                  </select>
-                </label>
-                <button onClick={saveAsRecipe} className={btnPrimary}>
-                  저장
-                </button>
-                <button onClick={() => setAsRecipe((p) => ({ ...p, open: false }))} className={btn}>
-                  취소
-                </button>
-              </div>
-              <p className="text-xs text-slate-500">
-                실측 그대로가 아니라 <b>주수 구간만 뽑아 따라 하기 쉬운 곡선</b>으로 다듬어
-                저장합니다. 손떨림까지 따라 할 필요는 없으니까요.
-              </p>
-            </div>
+            <>
+              <div className="mb-3 text-sm font-medium">이 추출을 목표로 저장</div>
+              <SaveAsRecipeForm
+                brewId={saved.brewId}
+                onSaved={setSavedRecipe}
+                onCancel={() => setSaveFormOpen(false)}
+              />
+            </>
           )}
-          {recipeError && <p className="mt-2 text-sm text-red-700">{recipeError}</p>}
         </div>
       )}
 
       {savedRecipe && (
         <div className="rounded border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
-          <div className="font-medium">목표로 저장했습니다 (레시피 #{savedRecipe.recipeId})</div>
+          <div className="font-medium">
+            목표로 저장했습니다
+            {savedRecipe.name ? ` — ${savedRecipe.name}` : ` (레시피 #${savedRecipe.recipeId})`}
+          </div>
+          {savedRecipe.beanName && (
+            <div className="mt-0.5 text-xs text-sky-800">원두: {savedRecipe.beanName}</div>
+          )}
           <div className="mt-1">
             측정 {brew.sampleCount}점을 {savedRecipe.targetCurve.length}점으로 다듬었습니다 · 총{" "}
             {savedRecipe.totalWaterG} g

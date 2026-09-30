@@ -1,0 +1,83 @@
+# PR과 dev·main 푸시마다 검증을 자동으로 돌립니다.
+#
+# 로컬에서 치던 명령을 GitHub이 대신 실행하는 것뿐입니다. 새로운 검사를 만들지 않았고,
+# CONTRIBUTING.md "검증" 절과 같은 명령을 씁니다. 한쪽만 바뀌면 어긋나므로 함께 고치세요.
+#
+# 백엔드와 프론트를 **따로 돌립니다.** 한쪽이 깨져도 다른 쪽 결과를 볼 수 있어야
+# 어디를 고쳐야 하는지 바로 드러납니다.
+name: CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+
+# 같은 브랜치에 연달아 push하면 이전 실행은 취소합니다. 결과가 밀리지 않게 합니다.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # CONTRIBUTING.md "개발 환경"의 버전과 맞춥니다.
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: 의존성 설치
+        run: pip install -r requirements-dev.txt
+
+      - name: ruff (린트 + 포맷)
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: pytest
+        run: pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # package-lock.json 그대로 설치합니다. install과 달리 잠금 파일을 고치지 않아
+      # 로컬과 CI가 같은 버전을 씁니다.
+      - name: 의존성 설치
+        run: npm ci
+
+      - name: 타입 검사
+        run: npx tsc --noEmit
+
+      - name: eslint
+        run: npm run lint
+
+      - name: prettier (포맷 확인)
+        run: npx prettier --check src
+
+      - name: vitest
+        run: npm test
+
+      # 개발 서버에서는 안 드러나는 빌드 오류가 있습니다. 배포 전에 미리 잡습니다.
+      - name: 프로덕션 빌드
+        run: npm run build

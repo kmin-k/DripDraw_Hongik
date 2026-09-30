@@ -38,14 +38,22 @@ class TestGoldenExample:
         assert golden.total_water_g == 300  # 20 × 15
 
     def test_bloom_water(self, golden):
-        assert golden.bloom_water_g == 56  # 20 × 2.8
+        assert golden.bloom_water_g == 60  # 20 × 2.8 = 56 → 10 단위
 
     def test_flow_rate(self, golden):
         assert golden.flow_rate_gps == 6.0  # 7.0 − 1.0(아프리카) + 0
 
     def test_pour_amounts(self, golden):
+        """누적 종료 물량 60 / 160 / 240 / 300의 차이입니다 (8-3절)."""
         amounts = [p.water_g for p in golden.pours]
-        assert amounts == [56, 98, 81, 65]  # Bloom / 2차 / 3차 / 4차(잔량)
+        assert amounts == [60, 100, 80, 60]  # Bloom / 2차 / 3차 / 4차(잔량)
+
+    def test_pour_ends_are_multiples_of_ten(self, golden):
+        """★ "여기까지 부으세요"가 되는 숫자입니다. 73 g, 81 g은 저울 보며 맞출 수 없습니다."""
+        cumulative = 0
+        for pour in golden.pours:
+            cumulative += pour.water_g
+            assert cumulative % 10 == 0
 
     def test_pours_start_on_a_fixed_cadence(self, golden):
         """주수는 간격마다 시작합니다. 대기는 간격에서 푸어 시간을 뺀 나머지입니다."""
@@ -60,13 +68,13 @@ class TestGoldenExample:
         """★ 최종 산출물. 좌표가 전부 일치해야 합니다."""
         assert golden.target_curve == [
             [0, 0],
-            [10, 56],
-            [35, 56],
-            [51, 154],
-            [70, 154],
-            [84, 235],
-            [105, 235],
-            [116, 300],
+            [10, 60],
+            [35, 60],
+            [52, 160],  # 100 g ÷ 6.0 = 16.7초
+            [70, 160],
+            [83, 240],  # 80 g ÷ 6.0 = 13.3초
+            [105, 240],
+            [115, 300],  # 60 g ÷ 6.0 = 10초
             [165, 300],  # 드립다운 — 물을 붓지 않는 구간
         ]
 
@@ -95,6 +103,30 @@ class TestInvariants:
             d50_um=1000,
         )
         assert sum(p.water_g for p in r.pours) == r.total_water_g
+
+    @pytest.mark.parametrize("dose", range(C.DOSE_MIN_G, C.DOSE_MAX_G + 1))
+    @pytest.mark.parametrize("roast", ["LIGHT", "MEDIUM", "DARK"])
+    @pytest.mark.parametrize("drink", ["HOT", "ICE"])
+    def test_every_pour_is_positive_and_ends_on_ten(self, dose, roast, drink):
+        """10 단위 반올림으로 종료 물량이 겹치면 물량 0인 주수가 생깁니다.
+
+        허용 원두량 전 범위에서 그런 조합이 없음을 고정합니다. 마지막(총 물량)은 Ratio
+        그대로라 10 단위가 아닐 수 있습니다.
+        """
+        r = generate_recipe(
+            dose_g=dose,
+            drink_type=drink,
+            roast_level=roast,
+            region="CENTRAL_AMERICA",
+            process="WASHED",
+            d50_um=1000,
+        )
+        cumulative = 0
+        for pour in r.pours[:-1]:
+            assert pour.water_g > 0
+            cumulative += pour.water_g
+            assert cumulative % 10 == 0
+        assert r.pours[-1].water_g > 0
 
     @pytest.mark.parametrize("dose", [10, 20, 30])
     @pytest.mark.parametrize("roast", ["LIGHT", "MEDIUM", "DARK"])

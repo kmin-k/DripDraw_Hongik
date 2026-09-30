@@ -90,6 +90,25 @@ class TestList:
         assert item["rmse"] is None
         assert item["doseG"] is None
 
+    def test_carries_the_recipe_id_for_grouping(self, client):
+        """같은 레시피끼리 묶어 정확도 추이를 보려면 목록에 레시피 id가 있어야 합니다.
+
+        레시피가 다르면 조건이 달라 정확도를 나란히 비교할 수 없습니다.
+        """
+        recipe = client.post("/api/recipe/generate", json=GOLDEN).json()
+        curve = brew_curve(TYPICAL, total_sec=150, noise_g=1.0)
+        for _ in range(2):
+            client.post(
+                "/api/brews", json={"recipeId": recipe["recipeId"], "actualCurve": curve, **TIMES}
+            )
+
+        items = client.get("/api/brews").json()["items"]
+        assert [item["recipeId"] for item in items] == [recipe["recipeId"]] * 2
+
+    def test_free_mode_has_no_recipe_id(self, client):
+        free_brew(client)
+        assert client.get("/api/brews").json()["items"][0]["recipeId"] is None
+
     def test_guided_brew_has_accuracy(self, client):
         guided_brew(client)
         item = client.get("/api/brews").json()["items"][0]

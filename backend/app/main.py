@@ -43,6 +43,7 @@ app.add_middleware(
 
 app.include_router(beans.router)
 app.include_router(recipes.router)
+app.include_router(recipes.stored)
 app.include_router(brews.router)
 app.include_router(feedback.router)
 app.include_router(vision.router)

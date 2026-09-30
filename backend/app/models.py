@@ -41,6 +41,12 @@ class Recipe(Base):
     parent_recipe_id: Mapped[int | None] = mapped_column(ForeignKey("recipes.id"), default=None)
     # RULE_ENGINE: 규칙으로 생성 / ADJUSTED: 피드백으로 보정 / RECORDED: 사용자의 추출을 목표로 저장
     source: Mapped[str] = mapped_column(String(20), default="RULE_ENGINE")
+    # 사용자가 붙인 이름. 자유 추출을 목표로 저장할 때 받습니다. 규칙 레시피는 비워 둡니다.
+    name: Mapped[str | None] = mapped_column(String(100), default=None)
+    # RECORDED 레시피의 원본 기록. 같은 기록을 두 번 저장하지 않게 하고, 기록 상세에서
+    # "이미 저장됨"을 보여주는 데 씁니다. brews ↔ recipes가 서로를 가리키게 되므로
+    # 외래키 제약은 걸지 않습니다 (SQLite는 순환 제약을 만들 수 없음). 기록을 지우면 NULL로 풉니다.
+    source_brew_id: Mapped[int | None] = mapped_column(Integer, default=None)
 
     # 입력
     dose_g: Mapped[int] = mapped_column(Integer)

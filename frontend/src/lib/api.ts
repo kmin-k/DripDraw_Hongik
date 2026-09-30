@@ -33,6 +33,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const body = await res.json().catch(() => ({}));
     throw new ApiError(formatError(body, res), res.status);
   }
+  // 삭제는 204로 본문이 없습니다. json()을 부르면 파싱 오류가 납니다.
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 
@@ -103,8 +105,11 @@ export interface Pour {
   endSec: number;
 }
 
-export interface Recipe {
-  recipeId: number;
+/** 규칙으로 생성 / 맛 평가로 보정 / 추출을 목표로 저장 */
+export type RecipeSource = "RULE_ENGINE" | "ADJUSTED" | "RECORDED";
+
+/** 계산 결과만. `POST /api/recipe/preview`가 돌려주며 DB에 남지 않아 recipeId가 없습니다. */
+export interface RecipePreview {
   totalWaterG: number;
   /** [[시간(초), 누적 물량(g)], ...] 구간 선형 곡선 */
   targetCurve: [number, number][];
@@ -116,6 +121,35 @@ export interface Recipe {
   grindGuide: string | null;
   iceMessage: string | null;
   pours: Pour[];
+}
+
+/** 저장된 레시피. 추출 화면은 이 객체를 통째로 받아 목표로 씁니다. */
+export interface Recipe extends RecipePreview {
+  recipeId: number;
+  source: RecipeSource;
+  doseG: number | null;
+  drinkType: DrinkType | null;
+  /** 사용자가 붙인 이름. 자유 추출을 저장할 때만 생기고 규칙 레시피는 null입니다. */
+  name: string | null;
+  beanId: number | null;
+  beanName: string | null;
+}
+
+/** 레시피 목록 한 줄. 곡선은 없습니다 — 내릴 때 상세를 가져옵니다. */
+export interface RecipeListItem {
+  recipeId: number;
+  name: string | null;
+  source: RecipeSource;
+  beanId: number | null;
+  beanName: string | null;
+  doseG: number;
+  drinkType: DrinkType;
+  totalWaterG: number;
+  createdAt: string;
+  /** 이 레시피로 내린 횟수. 0이면 만들어만 두고 쓰지 않은 레시피입니다. */
+  brewCount: number;
+  lastRmse: number | null;
+  lastBrewedAt: string | null;
 }
 
 // --- 추출 기록 ---
@@ -137,6 +171,21 @@ export interface BrewResult {
   finalWeightG: number;
 }
 
+/**
+ * 자유 추출을 목표로 저장할 때 보내는 것.
+ *
+ * 원두는 **기존 것을 고르거나(beanId) 그 자리에서 새로 등록(newBean)**합니다.
+ * 원두를 먼저 등록하지 않고 내린 뒤에 저장하는 경우를 위해서입니다. 둘을 함께 보내면 422.
+ */
+export interface SaveAsRecipeRequest {
+  doseG: number;
+  drinkType: DrinkType;
+  /** 레시피 이름. 자유 추출은 규칙이 없어 이름이 유일한 식별자입니다. */
+  name?: string | null;
+  beanId?: number | null;
+  newBean?: BeanCreate | null;
+}
+
 // --- 히스토리 (Phase 5) ---
 
 /**
@@ -150,6 +199,10 @@ export interface BrewListItem {
   rmse: number | null;
   durationSec: number;
   finalWeightG: number;
+  /** 따라간 목표 레시피. **같은 레시피끼리 묶어 정확도 추이를 보는 데 씁니다.** */
+  recipeId: number | null;
+  /** 사용자가 붙인 레시피 이름. 자유 추출을 저장한 것에만 있습니다. */
+  recipeName: string | null;
   beanName: string | null;
   doseG: number | null;
   totalWaterG: number | null;
@@ -178,6 +231,9 @@ export interface BrewDetail {
   /** 따라간 목표. 자유 모드는 null이고 화면은 실측 한 줄만 그립니다. */
   recipe: Recipe | null;
   feedback: FeedbackDetail | null;
+  /** 이 기록을 목표로 저장해 만든 레시피. 있으면 "목표로 저장" 대신 링크를 보여줍니다. */
+  savedRecipeId: number | null;
+  savedRecipeName: string | null;
 }
 
 // --- 맛 평가와 보정 (Phase 4) ---
@@ -221,18 +277,32 @@ export const api = {
   listBeans: () => request<{ items: Bean[] }>("/api/beans"),
   createBean: (body: BeanCreate) =>
     request<Bean>("/api/beans", { method: "POST", body: JSON.stringify(body) }),
+  /** 원두만 지웁니다. 그 원두로 만든 레시피·기록은 남고 원두 이름만 빠집니다. */
+  deleteBean: (beanId: number) => request<void>(`/api/beans/${beanId}`, { method: "DELETE" }),
+  /** 계산만. 입력이 바뀔 때마다 부르므로 저장하지 않습니다. */
+  previewRecipe: (body: RecipeRequest) =>
+    request<RecipePreview>("/api/recipe/preview", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  /** 계산하고 저장. 추출 화면으로 넘어갈 때 한 번만 부릅니다. */
   generateRecipe: (body: RecipeRequest) =>
     request<Recipe>("/api/recipe/generate", {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  listRecipes: () => request<{ items: RecipeListItem[] }>("/api/recipes"),
+  getRecipe: (recipeId: number) => request<Recipe>(`/api/recipes/${recipeId}`),
+  /** 내린 기록이 있으면 서버가 409로 거절합니다. */
+  deleteRecipe: (recipeId: number) =>
+    request<void>(`/api/recipes/${recipeId}`, { method: "DELETE" }),
   saveBrew: (body: BrewRequest) =>
     request<BrewResult>("/api/brews", {
       method: "POST",
       body: JSON.stringify(body),
     }),
   /** 마음에 든 추출을 다음 목표로 저장합니다. 곡선 다듬기는 서버가 합니다. */
-  saveBrewAsRecipe: (brewId: number, body: { doseG: number; drinkType: DrinkType }) =>
+  saveBrewAsRecipe: (brewId: number, body: SaveAsRecipeRequest) =>
     request<Recipe>(`/api/brews/${brewId}/save-as-recipe`, {
       method: "POST",
       body: JSON.stringify(body),
@@ -240,6 +310,8 @@ export const api = {
   /** 최근 추출부터. 목록에는 곡선이 없습니다. */
   listBrews: () => request<{ items: BrewListItem[] }>("/api/brews"),
   getBrew: (brewId: number) => request<BrewDetail>(`/api/brews/${brewId}`),
+  /** 기록과 그 맛 평가를 지웁니다. 이 기록으로 만든 레시피는 남습니다. */
+  deleteBrew: (brewId: number) => request<void>(`/api/brews/${brewId}`, { method: "DELETE" }),
   /** 맛 평가를 보내고 보정된 레시피를 받습니다. 조정 규칙은 전부 서버에 있습니다. */
   adjustRecipe: (brewId: number, taste: TasteRating) =>
     request<AdjustResult>("/api/recipe/adjust", {

@@ -99,8 +99,15 @@ class PourOut(CamelModel):
     end_sec: int
 
 
-class RecipeOut(CamelModel):
-    recipe_id: int
+class RecipeSource(StrEnum):
+    RULE_ENGINE = "RULE_ENGINE"  # 규칙으로 생성
+    ADJUSTED = "ADJUSTED"  # 맛 평가로 보정
+    RECORDED = "RECORDED"  # 사용자의 추출을 목표로 저장
+
+
+class RecipePreview(CamelModel):
+    """계산 결과만. `POST /api/recipe/preview`가 돌려주며 DB에 남지 않아 recipeId가 없습니다."""
+
     total_water_g: int
     target_curve: list[list[int]]
 
@@ -112,6 +119,43 @@ class RecipeOut(CamelModel):
     grind_guide: str | None = None
     ice_message: str | None = None
     pours: list[PourOut] = []
+
+
+class RecipeOut(RecipePreview):
+    """저장된 레시피. 추출 화면은 이 객체를 통째로 받아 목표로 씁니다."""
+
+    recipe_id: int
+    source: RecipeSource = RecipeSource.RULE_ENGINE
+    dose_g: int | None = None
+    drink_type: DrinkType | None = None
+    #: 사용자가 붙인 이름. 자유 추출을 저장할 때만 생기고 규칙 레시피는 null입니다.
+    name: str | None = None
+    #: 연결된 원두. 저장할 때 새로 등록한 원두도 여기로 옵니다.
+    bean_id: int | None = None
+    bean_name: str | None = None
+
+
+class RecipeListItem(CamelModel):
+    """레시피 목록 한 줄. 곡선은 담지 않습니다 — 상세에서 가져옵니다."""
+
+    recipe_id: int
+    name: str | None
+    source: RecipeSource
+    bean_id: int | None
+    bean_name: str | None
+    dose_g: int
+    drink_type: DrinkType
+    total_water_g: int
+    created_at: datetime
+    #: 이 레시피로 내린 횟수. 0이면 만들어만 두고 쓰지 않은 레시피입니다.
+    brew_count: int
+    #: 가장 최근 추출의 정확도. 한 번도 안 내렸으면 null.
+    last_rmse: float | None
+    last_brewed_at: datetime | None
+
+
+class RecipeList(CamelModel):
+    items: list[RecipeListItem]
 
 
 # --- 추출 기록 (Phase 2) ---
@@ -159,6 +203,11 @@ class BrewListItem(CamelModel):
     rmse: float | None
     duration_sec: int
     final_weight_g: float
+    #: 따라간 목표 레시피. **같은 레시피끼리 묶어 정확도 추이를 보는 데 씁니다.**
+    #: 레시피가 다르면 조건이 달라 정확도를 나란히 비교할 수 없습니다.
+    recipe_id: int | None
+    #: 사용자가 붙인 레시피 이름. 자유 추출을 저장한 것에만 있습니다.
+    recipe_name: str | None
     #: 원두를 등록하지 않고 만든 레시피, 자유 모드 추출은 null입니다.
     bean_name: str | None
     dose_g: int | None
@@ -195,6 +244,9 @@ class BrewDetail(CamelModel):
     #: 따라간 목표. 자유 모드는 null이고 화면은 실측 한 줄만 그립니다.
     recipe: RecipeOut | None
     feedback: FeedbackDetail | None
+    #: 이 기록을 목표로 저장해 만든 레시피. 있으면 화면은 "목표로 저장" 대신 링크를 보여줍니다.
+    saved_recipe_id: int | None = None
+    saved_recipe_name: str | None = None
 
 
 class Acidity(StrEnum):
@@ -259,11 +311,25 @@ class SaveAsRecipeRequest(CamelModel):
     """마음에 든 추출을 다음 목표로 저장합니다.
 
     자유 모드는 원두량·음용 방식을 받지 않으므로 저장 시점에 물어봅니다.
+
+    원두는 **기존 것을 고르거나(bean_id) 그 자리에서 새로 등록(new_bean)**할 수 있습니다.
+    원두를 먼저 등록하지 않고 내린 뒤에 저장하는 경우를 위해서입니다. 둘을 함께 보내면 400.
     """
 
     dose_g: int = Field(ge=C.DOSE_MIN_G, le=C.DOSE_MAX_G)
     drink_type: DrinkType
+    #: 레시피 이름. 비워 두면 히스토리에 원두 이름이나 "자유 모드"로 보입니다.
+    name: str | None = Field(default=None, max_length=100)
     bean_id: int | None = None
+    new_bean: BeanCreate | None = None
+
+    @model_validator(mode="after")
+    def bean_is_one_or_the_other(self) -> Self:
+        if self.bean_id is not None and self.new_bean is not None:
+            raise ValueError("beanId와 newBean은 함께 보낼 수 없습니다")
+        if self.name is not None and not self.name.strip():
+            raise ValueError("name은 비어 있을 수 없습니다")
+        return self
 
 
 class GrindConfidence(StrEnum):

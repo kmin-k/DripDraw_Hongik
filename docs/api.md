@@ -34,13 +34,19 @@ FastAPI가 `/docs`에 Swagger를 자동 생성하므로, **이 문서는 계약 
 | `GET` | `/health` | 0 |
 | `POST` | `/api/beans` | 0 |
 | `GET` | `/api/beans` | 0 |
+| `DELETE` | `/api/beans/{id}` | 5 |
+| `POST` | `/api/recipe/preview` | 5 |
 | `POST` | `/api/recipe/generate` | 3 |
+| `GET` | `/api/recipes` | 5 |
+| `GET` | `/api/recipes/{id}` | 5 |
+| `DELETE` | `/api/recipes/{id}` | 5 |
 | `POST` | `/api/recipe/adjust` | 4 |
 | `PATCH` | `/api/feedback/{id}` | 4 |
 | `POST` | `/api/brews` | 2 |
 | `POST` | `/api/brews/{id}/save-as-recipe` | 2 |
 | `GET` | `/api/brews` | 2 |
 | `GET` | `/api/brews/{id}` | 5 |
+| `DELETE` | `/api/brews/{id}` | 5 |
 | `POST` | `/api/vision/grind` | 6 |
 
 ---
@@ -74,11 +80,29 @@ FastAPI가 `/docs`에 Swagger를 자동 생성하므로, **이 문서는 계약 
 { "items": [ { "id": 1, "name": "Ethiopia Yirgacheffe", "region": "AFRICA", "roastLevel": "LIGHT", "process": "WASHED" } ] }
 ```
 
+## `DELETE /api/beans/{id}` — 원두 삭제
+
+응답 `204`. 없으면 `404`.
+
+그 원두로 만든 레시피와 추출 기록은 **남기고 연결만 끊습니다** (`beanId`·`beanName`이 `null`).
+원두는 레시피의 입력 조건일 뿐이고 기록은 실제로 내린 커피라, 원두를 정리했다고 정확도 추이가
+끊기면 안 됩니다. 연결이 끊긴 레시피로도 다시 내릴 수 있습니다 — 곡선은 레시피가 갖고 있습니다.
+
 ---
 
-## `POST /api/recipe/generate` ★Rule Engine
+## `POST /api/recipe/preview` · `POST /api/recipe/generate` ★Rule Engine
 
 입력 조건으로 Target Curve를 생성합니다. 계산 규칙은 [`rule-table.md`](rule-table.md).
+
+둘은 **요청과 계산이 같고 저장 여부만 다릅니다.**
+
+| | 저장 | 응답 | 언제 |
+|---|---|---|---|
+| `preview` | ✗ | `200`, `recipeId` 없음 | 레시피 화면에서 입력이 바뀔 때마다 |
+| `generate` | ✓ | `201`, 아래 형식 | "이 레시피로 추출하기"를 누를 때 |
+
+나눈 이유: 미리보기까지 저장하면 슬라이더 한 번에 레시피가 서너 개 생기고, 실제로 내린 건
+하나입니다. 레시피 목록(`GET /api/recipes`)이 그 쓰레기로 차지 않게 합니다.
 
 **요청**
 
@@ -98,6 +122,12 @@ FastAPI가 `/docs`에 Swagger를 자동 생성하므로, **이 문서는 계약 
 ```json
 {
   "recipeId": 12,
+  "source": "RULE_ENGINE",
+  "name": null,
+  "beanId": 1,
+  "beanName": "Ethiopia Yirgacheffe",
+  "doseG": 20,
+  "drinkType": "HOT",
   "waterTempC": 96,
   "totalWaterG": 300,
   "ratio": 15,
@@ -105,12 +135,12 @@ FastAPI가 `/docs`에 Swagger를 자동 생성하므로, **이 문서는 계약 
   "grindGuide": "현재 분쇄도 유지",
   "iceMessage": null,
   "pours": [
-    { "phase": "BLOOM",  "waterG": 56, "startSec": 0,   "endSec": 10  },
-    { "phase": "SECOND", "waterG": 98, "startSec": 35,  "endSec": 51  },
-    { "phase": "THIRD",  "waterG": 81, "startSec": 70,  "endSec": 84  },
-    { "phase": "FOURTH", "waterG": 65, "startSec": 105, "endSec": 116 }
+    { "phase": "BLOOM",  "waterG": 60,  "startSec": 0,   "endSec": 10  },
+    { "phase": "SECOND", "waterG": 100, "startSec": 35,  "endSec": 52  },
+    { "phase": "THIRD",  "waterG": 80,  "startSec": 70,  "endSec": 83  },
+    { "phase": "FOURTH", "waterG": 60,  "startSec": 105, "endSec": 115 }
   ],
-  "targetCurve": [[0,0],[10,56],[35,56],[51,154],[70,154],[84,235],[105,235],[116,300],[165,300]]
+  "targetCurve": [[0,0],[10,60],[35,60],[52,160],[70,160],[83,240],[105,240],[115,300],[165,300]]
 }
 ```
 
@@ -142,6 +172,44 @@ FastAPI가 `/docs`에 Swagger를 자동 생성하므로, **이 문서는 계약 
 ```json
 { "detail": "주수 간 대기가 음수입니다 (-10.0초). 현재 원두량 30 g에서는 물을 더 늘릴 수 없습니다." }
 ```
+
+`source`는 `RULE_ENGINE`(규칙) · `ADJUSTED`(맛 평가로 보정) · `RECORDED`(추출을 목표로 저장) 셋 중 하나입니다.
+**응답 형식은 `GET /api/recipes/{id}`, `GET /api/brews/{id}`의 `recipe`, `POST /api/recipe/adjust`의 `recipe`와 전부 같습니다.**
+추출 화면은 이 객체를 통째로 받아 목표로 쓰므로 어디서 왔든 같은 모양이어야 합니다.
+
+---
+
+## `GET /api/recipes` — 레시피 목록
+
+저장된 레시피 전부, 최신순. 곡선은 담지 않습니다.
+
+```json
+{ "items": [ {
+  "recipeId": 13, "name": "주말 아침용", "source": "RECORDED",
+  "beanId": 3, "beanName": "에티오피아 무라고",
+  "doseG": 20, "drinkType": "HOT", "totalWaterG": 302,
+  "createdAt": "2026-09-18T07:52:10",
+  "brewCount": 2, "lastRmse": 3.1, "lastBrewedAt": "2026-09-18T08:30:00"
+} ] }
+```
+
+- `brewCount` — 이 레시피로 내린 횟수. **0이면 만들어만 두고 쓰지 않은 레시피**입니다. 화면이 이를 접을지 말지 정합니다 — 서버가 걸러 버리면 사용자는 자기가 만든 레시피가 어디 갔는지 모릅니다
+- `lastRmse` · `lastBrewedAt` — 가장 최근 추출. 없으면 `null`
+
+## `GET /api/recipes/{id}` — 레시피 상세
+
+`POST /api/recipe/generate` 응답과 같은 형식. "이 레시피로 내리기"가 이걸 받아 추출 화면에 넘깁니다. 없으면 `404`.
+
+## `DELETE /api/recipes/{id}` — 레시피 삭제
+
+응답 `204`. 없으면 `404`. **이 레시피로 내린 기록이 있으면 `409`** — 기록의 정확도는 이 레시피의
+곡선 대비 값이라, 레시피가 사라지면 숫자만 남고 뜻을 잃습니다. 기록을 먼저 지우면 지울 수 있습니다.
+
+```json
+{ "detail": "이 레시피로 내린 기록이 2건 있어 지울 수 없습니다." }
+```
+
+이 레시피를 부모로 둔 보정 레시피와, 이 레시피를 제안한 맛 평가는 연결만 끊습니다(`null`).
 
 ---
 
@@ -196,14 +264,32 @@ Rule Engine 없이도 **"내가 만든 레시피"를 재현**할 수 있게 하�
 **요청** — 자유 모드는 원두량·음용 방식을 받지 않으므로 여기서 함께 보냅니다.
 
 ```json
-{ "doseG": 20, "drinkType": "HOT", "beanId": null }
+{
+  "doseG": 20,
+  "drinkType": "HOT",
+  "name": "주말 아침용",
+  "beanId": null,
+  "newBean": { "name": "에티오피아 무라고", "roaster": "모모스커피",
+               "region": "AFRICA", "process": "NATURAL", "roastLevel": "LIGHT" }
+}
 ```
+
+- `name` — 레시피 이름. 자유 추출은 규칙이 없어 **이름이 유일한 식별자**입니다. 선택이며 공백만 있으면 422
+- `beanId` — 이미 등록한 원두에 연결
+- `newBean` — **저장하면서 원두를 그 자리에서 등록.** 원두를 먼저 등록하지 않고 내린 경우를 위한 것입니다.
+  `POST /api/beans`와 같은 형식이고, 만들어진 원두는 원두 목록·레시피 화면 선택지에 똑같이 나옵니다
+- `beanId`와 `newBean`을 함께 보내면 422
+- **같은 기록을 두 번 저장하면 `409`** — 곡선이 같은 레시피가 둘 생깁니다. 이미 만든 레시피 번호를 알려줍니다.
+  기록 상세(`GET /api/brews/{id}`)의 `savedRecipeId`로 미리 알 수 있습니다
 
 **응답 `201`** — `source`가 `RECORDED`인 레시피
 
 ```json
 {
   "recipeId": 5,
+  "name": "주말 아침용",
+  "beanId": 3,
+  "beanName": "에티오피아 무라고",
   "totalWaterG": 302,
   "targetCurve": [[0,0],[10,53],[28,53],[42,153],[58,153],[70,243],[88,243],[98,302],[150,302]],
   "waterTempC": null,
@@ -213,6 +299,8 @@ Rule Engine 없이도 **"내가 만든 레시피"를 재현**할 수 있게 하�
   "pours": []
 }
 ```
+
+곡선 검사에 실패(400)하면 원두도 만들지 않습니다. 빈 원두가 목록에 남는 것을 막기 위해서입니다.
 
 > **실측 곡선을 그대로 목표로 쓰지 않습니다.** 초당 9.3회 측정된 1,900여 점에는 손떨림과
 > 저울 진동이 섞여 있어, 그대로 쓰면 *"내가 흔들린 것까지 따라 하라"*가 됩니다.
@@ -226,7 +314,7 @@ Rule Engine 없이도 **"내가 만든 레시피"를 재현**할 수 있게 하�
 |---|---|
 | 400 | 주수 구간을 찾지 못함 (저울만 켜두고 붓지 않은 기록) |
 | 404 | `brewId` 또는 `beanId` 없음 |
-| 422 | 원두량이 10~30 밖 |
+| 422 | 원두량이 10~30 밖 · 이름이 공백뿐 · `beanId`와 `newBean` 동시 전송 |
 
 ---
 
@@ -238,7 +326,7 @@ Rule Engine 없이도 **"내가 만든 레시피"를 재현**할 수 있게 하�
 {
   "items": [
     { "brewId": 34, "brewedAt": "2026-08-13T09:12:03Z", "rmse": 4.71,
-      "durationSec": 205, "finalWeightG": 300.4,
+      "durationSec": 205, "finalWeightG": 300.4, "recipeId": 12,
       "beanName": "Ethiopia Yirgacheffe", "doseG": 20, "totalWaterG": 300,
       "freeMode": false, "hasFeedback": true }
   ]
@@ -248,6 +336,7 @@ Rule Engine 없이도 **"내가 만든 레시피"를 재현**할 수 있게 하�
 **목록에는 곡선을 담지 않습니다.** 곡선 하나가 약 2,000점(45 KB)이라 몇 건만 모여도 응답이 커지고, 훑어보는 화면에는 필요하지 않습니다. 곡선은 상세에서 가져갑니다.
 
 - `freeMode`가 `true`면 따라간 목표가 없어 `rmse`·`doseG`·`totalWaterG`가 전부 `null`입니다
+- `recipeId`로 **같은 레시피끼리 묶어 정확도 추이**를 볼 수 있습니다. 레시피가 다르면 조건이 달라 정확도를 나란히 비교할 수 없습니다
 - `beanName`은 원두를 등록하지 않고 만든 레시피에서도 `null`입니다
 - `hasFeedback`으로 이미 평가한 추출을 구분합니다. 평가는 추출당 하나뿐입니다
 
@@ -261,14 +350,27 @@ Rule Engine 없이도 **"내가 만든 레시피"를 재현**할 수 있게 하�
   "beanName": "Ethiopia Yirgacheffe",
   "recipe": { "recipeId": 12, "targetCurve": [[0, 0]] },
   "feedback": { "feedbackId": 8, "acidity": "OK", "bitterness": "STRONG",
-                "strength": "THIN", "suggestedRecipeId": 13, "applied": true }
+                "strength": "THIN", "suggestedRecipeId": 13, "applied": true },
+  "savedRecipeId": null,
+  "savedRecipeName": null
 }
 ```
+
+- `savedRecipeId` · `savedRecipeName` — 이 기록을 목표로 저장해 만든 레시피. 있으면 화면은
+  "목표로 저장" 대신 그 레시피로 가는 링크를 보여줍니다
 
 `recipe`는 `POST /api/recipe/generate`와 같은 형식입니다. **"이 레시피로 다시 내리기"는 `recipe`를 그대로 추출 화면에 넘기면 됩니다.**
 
 - 자유 모드 추출은 `recipe`가 `null`입니다. 화면은 실측 한 줄만 그립니다
 - 평가하지 않았으면 `feedback`이 `null`입니다
+
+## `DELETE /api/brews/{id}` — 기록 삭제
+
+응답 `204`. 없으면 `404`.
+
+맛 평가는 기록에 딸린 것이라 **함께 지웁니다.** 이 기록으로 만든 레시피(목표로 저장·피드백 보정)는
+**남깁니다** — 레시피는 기록을 가리키지 않는 독립된 산출물이고, 이미 그 레시피로 내린 다른 기록이
+있을 수 있습니다.
 
 ---
 

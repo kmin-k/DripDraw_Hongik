@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import DeleteButton from "../components/DeleteButton";
 import { api, type Bean, type BeanCreate } from "../lib/api";
 import { PROCESS, REGION, ROAST } from "../lib/labels";
 
@@ -193,10 +194,18 @@ export default function BeansPage() {
                     {/* 등록만 하고 끝나면 왜 있는 화면인지 알 수 없습니다. 바로 다음 단계로 잇습니다. */}
                     <button
                       onClick={() => navigate("/recipe", { state: { beanId: bean.id } })}
-                      className="text-xs text-sky-700 hover:underline"
+                      className="mr-3 text-xs whitespace-nowrap text-sky-700 hover:underline"
                     >
                       이 원두로 레시피 만들기
                     </button>
+                    <DeleteButton
+                      className="justify-end"
+                      warning="내린 기록은 남습니다."
+                      onConfirm={async () => {
+                        await api.deleteBean(bean.id);
+                        setBeans((prev) => prev?.filter((b) => b.id !== bean.id) ?? null);
+                      }}
+                    />
                   </td>
                 </tr>
               ))}
