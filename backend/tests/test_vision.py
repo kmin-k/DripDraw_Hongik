@@ -10,6 +10,8 @@
 `architecture.md`가 "절대 입자 크기 검증은 범위 제외"로 정한 부분입니다.
 """
 
+import io
+
 import cv2
 import numpy as np
 import pytest
@@ -223,6 +225,26 @@ class TestApi:
         assert set(body) == {"d50Um", "guide", "confidence"}
         assert body["d50Um"] == pytest.approx(TRUTH_DV50_UM, rel=0.05)
         assert body["confidence"] in {"HIGH", "MEDIUM", "LOW"}
+
+    def test_reads_iphone_heic(self, client, synthetic_image, monkeypatch):
+        """★ 아이폰 원본(HEIC)도 JPEG와 같은 값이 나와야 합니다. OpenCV는 HEIC를 못 읽습니다."""
+        import pillow_heif
+        from PIL import Image
+
+        from app.routers import vision
+
+        monkeypatch.setattr(vision, "MARKER_LENGTH_MM", SYNTHETIC_MARKER_MM)
+
+        rgb = cv2.cvtColor(synthetic_image, cv2.COLOR_BGR2RGB)
+        buf = io.BytesIO()
+        pillow_heif.from_pillow(Image.fromarray(rgb)).save(buf, format="HEIF", quality=95)
+
+        res = client.post(
+            "/api/vision/grind",
+            files={"file": ("IMG_0001.HEIC", buf.getvalue(), "image/heic")},
+        )
+        assert res.status_code == status.HTTP_200_OK
+        assert res.json()["d50Um"] == pytest.approx(TRUTH_DV50_UM, rel=0.05)
 
     def test_rejects_non_image(self, client):
         res = client.post(

@@ -7,3 +7,4 @@ pydantic-settings
 python-multipart
 opencv-python-headless
 numpy
+pillow-heif

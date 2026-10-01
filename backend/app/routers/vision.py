@@ -12,6 +12,7 @@
 constants.py를 고쳤을 때 한쪽만 반영됩니다 (rule-table.md 8-7절).
 """
 
+import io
 import logging
 from typing import Annotated
 
@@ -19,6 +20,8 @@ import cv2
 import numpy as np
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
+from PIL import Image, UnidentifiedImageError
+from pillow_heif import register_heif_opener
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -33,6 +36,9 @@ from app.services.grind_analyzer import (
 from app.services.rule_engine import grind_guide
 
 logger = logging.getLogger(__name__)
+
+# Pillow가 HEIC를 열 수 있게 합니다. 한 번만 등록하면 됩니다.
+register_heif_opener()
 
 router = APIRouter(prefix="/api/vision", tags=["vision"])
 
@@ -51,11 +57,30 @@ MARKER_LENGTH_MM = 20.0
 GUIDE_DRINK_TYPE = "HOT"
 
 
+def _decode(raw: bytes) -> np.ndarray | None:
+    """업로드 바이트를 OpenCV 이미지(BGR)로. 읽을 수 없으면 None.
+
+    OpenCV는 아이폰 기본 형식인 HEIC를 읽지 못합니다. 앱 화면으로 올리면 사파리가
+    JPEG로 바꿔 보내지만, 원본 파일을 PC로 옮겨 올리는 경우를 위해 Pillow로 한 번 더 시도합니다.
+    """
+    img = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
+    if img is not None:
+        return img
+    try:
+        with Image.open(io.BytesIO(raw)) as pil:
+            rgb = np.asarray(pil.convert("RGB"))
+    except (UnidentifiedImageError, OSError):
+        return None
+    return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+
+
 def _analyze(raw: bytes) -> tuple[float, str]:
     """스레드풀에서 도는 동기 작업. (d50_um, confidence)를 돌려줍니다."""
-    img = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
+    img = _decode(raw)
     if img is None:
-        raise AnalysisError("이미지를 읽을 수 없습니다. JPG 또는 PNG 파일을 올려주세요.")
+        raise AnalysisError(
+            "이미지를 읽을 수 없습니다. JPG, PNG 또는 아이폰 사진(HEIC)을 올려주세요."
+        )
 
     cfg = AnalysisConfig(marker_length_mm=MARKER_LENGTH_MM)
     result = analyze_grind_image(img, cfg)
@@ -82,7 +107,7 @@ async def analyze_grind(
 
     if file.content_type and file.content_type.lower() not in ALLOWED_TYPES:
         raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, detail="JPG, PNG, WEBP 이미지만 올릴 수 있습니다."
+            status.HTTP_400_BAD_REQUEST, detail="JPG, PNG, WEBP, HEIC 이미지만 올릴 수 있습니다."
         )
 
     raw = await file.read()
