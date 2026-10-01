@@ -25,8 +25,11 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  // 파일 업로드(FormData)는 브라우저가 경계값을 담은 Content-Type을 직접 붙여야 합니다.
+  // 여기서 JSON으로 덮어쓰면 서버가 파일을 읽지 못합니다.
+  const isForm = init?.body instanceof FormData;
   const res = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
+    headers: isForm ? undefined : { "Content-Type": "application/json" },
     ...init,
   });
   if (!res.ok) {
@@ -150,6 +153,18 @@ export interface RecipeListItem {
   brewCount: number;
   lastRmse: number | null;
   lastBrewedAt: string | null;
+}
+
+// --- 분쇄도 측정 (Vision) ---
+
+/** 사진으로 잰 분쇄도. 절대값이 아니라 상대 가이드입니다 (docs/api.md). */
+export interface GrindAnalysis {
+  /** 부피 가중 D50. 레시피의 d50Um 칸에 그대로 넣습니다. */
+  d50Um: number;
+  /** 핫 기준 안내. 레시피 화면은 실제 음용 방식으로 다시 계산된 안내를 씁니다. */
+  guide: string;
+  /** 촬영 해상도와 검출 입자 수로 정한 신뢰도. LOW면 다시 찍도록 안내합니다. */
+  confidence: "HIGH" | "MEDIUM" | "LOW";
 }
 
 // --- 추출 기록 ---
@@ -291,6 +306,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  /** 원두 가루 사진에서 D50을 잽니다. 분석에 몇 초 걸립니다. 사진은 서버에 남지 않습니다. */
+  analyzeGrind: (photo: File) => {
+    const form = new FormData();
+    form.append("file", photo);
+    return request<GrindAnalysis>("/api/vision/grind", { method: "POST", body: form });
+  },
   listRecipes: () => request<{ items: RecipeListItem[] }>("/api/recipes"),
   getRecipe: (recipeId: number) => request<Recipe>(`/api/recipes/${recipeId}`),
   /** 내린 기록이 있으면 서버가 409로 거절합니다. */

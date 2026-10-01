@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   CartesianGrid,
@@ -10,7 +10,13 @@ import {
   YAxis,
 } from "recharts";
 
-import { api, type Bean, type RecipePreview, type RecipeRequest } from "../lib/api";
+import {
+  api,
+  type Bean,
+  type GrindAnalysis,
+  type RecipePreview,
+  type RecipeRequest,
+} from "../lib/api";
 import { DRINK, PHASE, PROCESS, REGION, ROAST } from "../lib/labels";
 import { loadSettings } from "../lib/settings";
 
@@ -46,6 +52,12 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 const inputClass =
   "w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-slate-900 focus:outline-none";
 
+const CONFIDENCE_LABEL: Record<GrindAnalysis["confidence"], string> = {
+  HIGH: "높음",
+  MEDIUM: "보통",
+  LOW: "낮음",
+};
+
 export default function RecipePage() {
   const navigate = useNavigate();
   // 원두 화면에서 원두를 지정해 넘어올 수 있습니다.
@@ -74,6 +86,35 @@ export default function RecipePage() {
     }, 400);
     return () => clearTimeout(timer);
   }, [form]);
+
+  /**
+   * 사진으로 분쇄도 측정 → D50 칸 채우기.
+   *
+   * 사용자는 그라인더 눈금을 μm로 바꿀 방법이 없습니다. 사진 한 장으로 그 칸을 채웁니다.
+   * 값이 들어가면 미리보기가 다시 계산되어 곡선과 분쇄도 안내가 함께 바뀝니다.
+   */
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const [measuring, setMeasuring] = useState(false);
+  const [grind, setGrind] = useState<GrindAnalysis | null>(null);
+  const [grindError, setGrindError] = useState<string | null>(null);
+
+  const measureGrind = async (photo: File) => {
+    setMeasuring(true);
+    setGrindError(null);
+    try {
+      const result = await api.analyzeGrind(photo);
+      setGrind(result);
+      update("d50Um", Math.round(result.d50Um));
+    } catch (err) {
+      setGrind(null);
+      setGrindError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setMeasuring(false);
+    }
+  };
+
+  // 측정 후 사용자가 칸을 직접 고쳤으면 그건 더 이상 측정값이 아닙니다. 신뢰도 표시를 내립니다.
+  const measured = grind !== null && Math.round(grind.d50Um) === form.d50Um ? grind : null;
 
   /** 지금 입력으로 레시피를 저장하고 추출 화면으로 넘어갑니다. */
   const startBrew = async () => {
@@ -243,16 +284,64 @@ export default function RecipePage() {
           </select>
         </Field>
 
-        <Field label="분쇄 입자 D50 (μm)">
+        <div>
+          <Field label="분쇄 입자 D50 (μm)">
+            <input
+              type="number"
+              step={50}
+              min={100}
+              value={form.d50Um}
+              onChange={(e) => update("d50Um", Number(e.target.value))}
+              className={inputClass}
+            />
+          </Field>
+          {/* capture를 걸지 않습니다. 걸면 휴대폰에서 카메라만 열려 앨범의 사진을 고를 수 없습니다.
+              아이폰은 여기서 고른 사진을 JPEG로 바꿔 보냅니다. */}
           <input
-            type="number"
-            step={50}
-            min={100}
-            value={form.d50Um}
-            onChange={(e) => update("d50Um", Number(e.target.value))}
-            className={inputClass}
+            ref={photoInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const photo = e.target.files?.[0];
+              // 같은 사진을 다시 골라도 onChange가 불리도록 비웁니다.
+              e.target.value = "";
+              if (photo) void measureGrind(photo);
+            }}
           />
-        </Field>
+          <button
+            type="button"
+            onClick={() => photoInputRef.current?.click()}
+            disabled={measuring}
+            className="mt-1.5 w-full rounded border border-slate-300 px-2 py-1.5 text-xs hover:bg-slate-50 disabled:opacity-50"
+          >
+            {measuring ? "사진 분석 중…" : "📷 사진으로 측정"}
+          </button>
+        </div>
+
+        {/* 측정 상태는 칸 아래 한 줄을 통째로 씁니다. 좁은 칸 안에 넣으면 폰에서 줄바꿈이 엉킵니다. */}
+        <div className="col-span-full text-xs">
+          {measuring ? (
+            <p className="text-slate-500">분석에 몇 초 걸립니다.</p>
+          ) : grindError ? (
+            <p className="text-red-700">{grindError}</p>
+          ) : measured ? (
+            measured.confidence === "LOW" ? (
+              <p className="text-amber-700">
+                측정값 {Math.round(measured.d50Um)} μm · 신뢰도 낮음 — 더 가까이에서 다시
+                찍어보세요.
+              </p>
+            ) : (
+              <p className="text-slate-600">
+                사진으로 측정한 값입니다 · 신뢰도 {CONFIDENCE_LABEL[measured.confidence]}
+              </p>
+            )
+          ) : (
+            <p className="text-slate-500">
+              📷 마커 옆에 원두 가루를 한꼬집 흩뿌리고 위에서 가까이 찍어주세요.
+            </p>
+          )}
+        </div>
       </div>
 
       {error && (
