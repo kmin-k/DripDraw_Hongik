@@ -445,7 +445,7 @@ PATCH /api/feedback/{id}   { "applied": true }
 
 ## `POST /api/vision/grind` — 분쇄도 분석 (P5)
 
-`multipart/form-data`, 필드 `file`, 선택 필드 `beanId`.
+`multipart/form-data`, 필드 `file`, 선택 필드 `beanId` · `drinkType`.
 
 ```json
 { "d50Um": 1400, "guide": "3단계 곱게", "confidence": "MEDIUM" }
@@ -456,8 +456,10 @@ PATCH /api/feedback/{id}   { "applied": true }
 `d50Um`은 **부피 가중 D50**입니다. 체 분리·레이저 회절 장비가 쓰는 기준이라
 `rule-table.md`의 D50 범위와 비교할 수 있습니다.
 
-`guide`는 **핫 기준**(950~1250 μm)으로 계산합니다. 촬영 시점에는 음용 방식을 모르므로,
-아이스는 `recipe/generate`가 실제 `drinkType`으로 다시 판단합니다.
+`guide`는 선택 필드 **`drinkType`**(`HOT` | `ICE`) 기준으로 계산합니다. 적정 범위가 핫 950~1250 μm,
+아이스 900~1100 μm로 달라 같은 사진이라도 안내가 다릅니다. 보내지 않으면 `HOT`입니다.
+분쇄도 탭은 사용자가 고른 음용 방식을 보내고, 레시피 화면은 보내지 않고 미리보기가 실제
+`drinkType`으로 다시 계산한 안내를 씁니다. 잘못된 값이면 `422`.
 
 `confidence`는 촬영 해상도(μm/픽셀)와 검출된 입자 수로 정합니다.
 `LOW`면 값을 참고만 하고 다시 촬영하도록 안내합니다.

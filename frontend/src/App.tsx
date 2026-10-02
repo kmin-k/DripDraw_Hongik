@@ -6,6 +6,7 @@ import BeansPage from "./pages/BeansPage";
 import BrewDetailPage from "./pages/BrewDetailPage";
 import BrewPage from "./pages/BrewPage";
 import FeedbackPage from "./pages/FeedbackPage";
+import GrindPage from "./pages/GrindPage";
 import HistoryPage from "./pages/HistoryPage";
 import HomePage from "./pages/HomePage";
 import OnboardingPage from "./pages/OnboardingPage";
@@ -25,6 +26,8 @@ import { loadSettings } from "./lib/settings";
 const TABS = [
   { to: "/", label: "홈", icon: "🏠" },
   { to: "/beans", label: "원두", icon: "🫘" },
+  // 원두를 고르고 → 갈아서 확인하고 → 레시피. 실제로 하는 순서대로 둡니다.
+  { to: "/grind", label: "분쇄도", icon: "📷" },
   { to: "/recipes", label: "레시피", icon: "📈" },
   { to: "/history", label: "기록", icon: "📋" },
   { to: "/settings", label: "설정", icon: "⚙️" },
@@ -93,6 +96,7 @@ export default function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/onboarding" element={<OnboardingPage />} />
             <Route path="/beans" element={<BeansPage />} />
+            <Route path="/grind" element={<GrindPage />} />
             <Route path="/recipe" element={<RecipePage />} />
             <Route path="/recipes" element={<RecipesPage />} />
             <Route path="/brew" element={<BrewPage />} />

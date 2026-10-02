@@ -19,6 +19,7 @@ import {
 } from "../lib/api";
 import { DRINK, PHASE, PROCESS, REGION, ROAST } from "../lib/labels";
 import { loadSettings } from "../lib/settings";
+import { CONFIDENCE_LABEL, GRIND_PHOTO_HINT, useGrindMeasure } from "../lib/useGrindMeasure";
 
 /**
  * 데모 시나리오 2번 — 입력을 바꾸면 Target Curve가 즉시 달라지는 화면.
@@ -27,8 +28,14 @@ import { loadSettings } from "../lib/settings";
  * 규칙을 프론트에 복제하면 서버와 반드시 어긋나기 때문입니다 (docs/rule-table.md).
  */
 
+/** 다른 화면에서 넘겨줄 수 있는 것 — 원두 화면은 원두를, 분쇄도 화면은 측정 결과를. */
+interface RecipeNavState {
+  beanId?: number;
+  grind?: GrindAnalysis;
+}
+
 /** 원두량·음용 방식은 설정에 저장된 값에서 시작합니다 (온보딩에서 정합니다). */
-function initialForm(): RecipeRequest {
+function initialForm(grind?: GrindAnalysis): RecipeRequest {
   const settings = loadSettings();
   return {
     doseG: settings.doseG,
@@ -36,7 +43,7 @@ function initialForm(): RecipeRequest {
     roastLevel: "LIGHT",
     region: "AFRICA",
     process: "WASHED",
-    d50Um: 950,
+    d50Um: grind ? Math.round(grind.d50Um) : 950,
   };
 }
 
@@ -52,18 +59,12 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 const inputClass =
   "w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-slate-900 focus:outline-none";
 
-const CONFIDENCE_LABEL: Record<GrindAnalysis["confidence"], string> = {
-  HIGH: "높음",
-  MEDIUM: "보통",
-  LOW: "낮음",
-};
-
 export default function RecipePage() {
   const navigate = useNavigate();
-  // 원두 화면에서 원두를 지정해 넘어올 수 있습니다.
-  const preselectBeanId = (useLocation().state as { beanId?: number } | null)?.beanId;
+  const navState = useLocation().state as RecipeNavState | null;
+  const preselectBeanId = navState?.beanId;
 
-  const [form, setForm] = useState<RecipeRequest>(initialForm);
+  const [form, setForm] = useState<RecipeRequest>(() => initialForm(navState?.grind));
   const [beans, setBeans] = useState<Bean[]>([]);
   const [recipe, setRecipe] = useState<RecipePreview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -94,23 +95,18 @@ export default function RecipePage() {
    * 값이 들어가면 미리보기가 다시 계산되어 곡선과 분쇄도 안내가 함께 바뀝니다.
    */
   const photoInputRef = useRef<HTMLInputElement>(null);
-  const [measuring, setMeasuring] = useState(false);
-  const [grind, setGrind] = useState<GrindAnalysis | null>(null);
-  const [grindError, setGrindError] = useState<string | null>(null);
+  // 분쇄도 탭에서 재고 넘어왔으면 그 결과로 시작합니다. 신뢰도 표시도 그대로 이어집니다.
+  const {
+    measuring,
+    result: grind,
+    error: grindError,
+    measure,
+  } = useGrindMeasure(navState?.grind ?? null);
 
   const measureGrind = async (photo: File) => {
-    setMeasuring(true);
-    setGrindError(null);
-    try {
-      const result = await api.analyzeGrind(photo);
-      setGrind(result);
-      update("d50Um", Math.round(result.d50Um));
-    } catch (err) {
-      setGrind(null);
-      setGrindError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setMeasuring(false);
-    }
+    // 음용 방식은 보내지 않습니다. 이 화면의 분쇄도 안내는 미리보기가 실제 음용 방식으로 다시 계산합니다.
+    const result = await measure(photo);
+    if (result) update("d50Um", Math.round(result.d50Um));
   };
 
   // 측정 후 사용자가 칸을 직접 고쳤으면 그건 더 이상 측정값이 아닙니다. 신뢰도 표시를 내립니다.
@@ -337,9 +333,7 @@ export default function RecipePage() {
               </p>
             )
           ) : (
-            <p className="text-slate-500">
-              📷 마커 옆에 원두 가루를 한꼬집 흩뿌리고 위에서 가까이 찍어주세요.
-            </p>
+            <p className="text-slate-500">📷 {GRIND_PHOTO_HINT}</p>
           )}
         </div>
       </div>

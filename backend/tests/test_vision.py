@@ -246,6 +246,37 @@ class TestApi:
         assert res.status_code == status.HTTP_200_OK
         assert res.json()["d50Um"] == pytest.approx(TRUTH_DV50_UM, rel=0.05)
 
+    def test_guide_follows_drink_type(self, client, synthetic_jpeg, monkeypatch):
+        """★ 같은 사진도 아이스면 아이스 기준으로 안내합니다. 핫과 적정 범위가 다릅니다."""
+        from app.routers import vision
+        from app.services.rule_engine import grind_guide
+
+        monkeypatch.setattr(vision, "MARKER_LENGTH_MM", SYNTHETIC_MARKER_MM)
+
+        def guide(drink: str | None) -> dict:
+            data = {"drinkType": drink} if drink else {}
+            res = client.post(
+                "/api/vision/grind",
+                files={"file": ("grind.jpg", synthetic_jpeg, "image/jpeg")},
+                data=data,
+            )
+            assert res.status_code == status.HTTP_200_OK
+            return res.json()
+
+        ice = guide("ICE")
+        assert ice["guide"] == grind_guide("ICE", ice["d50Um"])
+        # 보내지 않으면 예전처럼 핫 기준입니다. 레시피 화면은 이 경우에 해당합니다.
+        default = guide(None)
+        assert default["guide"] == grind_guide("HOT", default["d50Um"])
+
+    def test_rejects_unknown_drink_type(self, client, synthetic_jpeg):
+        res = client.post(
+            "/api/vision/grind",
+            files={"file": ("grind.jpg", synthetic_jpeg, "image/jpeg")},
+            data={"drinkType": "LATTE"},
+        )
+        assert res.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
     def test_rejects_non_image(self, client):
         res = client.post(
             "/api/vision/grind",

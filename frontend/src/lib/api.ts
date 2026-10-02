@@ -307,9 +307,11 @@ export const api = {
       body: JSON.stringify(body),
     }),
   /** 원두 가루 사진에서 D50을 잽니다. 분석에 몇 초 걸립니다. 사진은 서버에 남지 않습니다. */
-  analyzeGrind: (photo: File) => {
+  analyzeGrind: (photo: File, drinkType?: DrinkType) => {
     const form = new FormData();
     form.append("file", photo);
+    // 핫·아이스는 적정 분쇄도가 달라 안내가 달라집니다. 안 보내면 서버가 핫 기준으로 답합니다.
+    if (drinkType) form.append("drinkType", drinkType);
     return request<GrindAnalysis>("/api/vision/grind", { method: "POST", body: form });
   },
   listRecipes: () => request<{ items: RecipeListItem[] }>("/api/recipes"),

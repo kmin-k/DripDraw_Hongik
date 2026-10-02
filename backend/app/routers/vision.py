@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Bean
-from app.schemas import GrindAnalysisOut
+from app.schemas import DrinkType, GrindAnalysisOut
 from app.services.grind_analyzer import (
     AnalysisConfig,
     AnalysisError,
@@ -52,9 +52,9 @@ ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic", "image/h
 #: 이 값이 실물과 다르면 측정값 전체가 그 비율만큼 어긋납니다.
 MARKER_LENGTH_MM = 20.0
 
-#: 분쇄도 안내를 계산할 기준. 촬영 시점에는 음용 방식을 모르므로 핫으로 고정합니다.
-#: 아이스 기준(900~1100)은 `recipe/generate`가 실제 drinkType으로 다시 판단합니다.
-GUIDE_DRINK_TYPE = "HOT"
+#: 음용 방식을 보내지 않았을 때의 안내 기준. 레시피 화면은 이 안내를 쓰지 않고
+#: `recipe/generate`가 실제 drinkType으로 다시 계산한 것을 씁니다.
+DEFAULT_DRINK_TYPE = DrinkType.HOT
 
 
 def _decode(raw: bytes) -> np.ndarray | None:
@@ -96,8 +96,12 @@ async def analyze_grind(
     db: DbSession,
     file: Annotated[UploadFile, File()],
     bean_id: Annotated[int | None, Form(alias="beanId")] = None,
+    drink_type: Annotated[DrinkType, Form(alias="drinkType")] = DEFAULT_DRINK_TYPE,
 ) -> GrindAnalysisOut:
     """원두 가루 사진에서 D50을 측정하고 분쇄도 조정 방향을 안내합니다.
+
+    핫과 아이스는 적정 분쇄도 범위가 달라 같은 사진이라도 안내가 다릅니다.
+    분쇄도만 재러 온 사용자에게는 이 안내가 결과의 핵심이라 음용 방식을 받습니다.
 
     사진에는 기준 크기를 알 수 있는 ArUco 마커가 가루와 같은 평면에 있어야 합니다.
     마커가 없으면 픽셀을 μm로 환산할 방법이 없어 400을 냅니다.
@@ -135,6 +139,6 @@ async def analyze_grind(
 
     return GrindAnalysisOut(
         d50_um=round(d50_um, 1),
-        guide=grind_guide(GUIDE_DRINK_TYPE, d50_um),
+        guide=grind_guide(drink_type, d50_um),
         confidence=confidence,
     )
