@@ -117,9 +117,10 @@
 
 ## Phase 6 — Vision (선택, 범위 고정)
 
-- [ ] ArUco 마커 4점 인식 → Perspective Warp
-- [ ] Contour 기반 입자 크기 분포 추정 → **상대 가이드**로만 출력
-- [ ] `POST /api/vision/grind`
+- [x] ArUco 마커 4점 인식 → Perspective Warp
+- [x] Contour 기반 입자 크기 분포 추정 → **상대 가이드**로만 출력
+- [x] `POST /api/vision/grind` — 아이폰 HEIC, 음용 방식별 안내 포함
+- [x] 화면 연동 — 레시피 화면 D50 칸 옆 "사진으로 측정", **분쇄도 탭**(측정만 하려는 사람용), 마커 인쇄용 A4 PDF
 
 **하지 않을 것**: CNN 분류기 학습, 절대 입자 크기 검증, 그라인더 눈금 DB, 시프터 정밀 검증
 
@@ -135,7 +136,9 @@
 
 ---
 
-## 배포 (구성 확정, 착수는 교수님 면담 후)
+## 배포 ✅ 2026-10-02 — https://dripdraw.store
+
+> 실제 절차와 운영 명령은 [`deploy.md`](deploy.md). 이 절은 구성을 정한 **근거**입니다.
 
 목적은 사용자 확보가 아니라 **기술적 완성도** — 실제로 접근 가능한 형태까지 만들어 두는 것.
 시연은 우리 저울로 진행하므로 배포 여부와 무관하다.
@@ -149,11 +152,11 @@
 가비아 도메인
    │  A 레코드 → Elastic IP
    ▼
-EC2 t3.micro ── Caddy (Let's Encrypt 자동) ─┬─ /       → 프론트 빌드본 (정적)
-                                            └─ /api/*  → FastAPI (Docker)
-                                                           │
-                                                           ▼
-                                                   RDS PostgreSQL
+EC2 t3.micro (시드니) ── Caddy (Let's Encrypt 자동) ─┬─ /       → 프론트 빌드본 (정적)
+                                                     └─ /api/*  → FastAPI (Docker)
+                                                                    │
+                                                                    ▼
+                                                     PostgreSQL 17 (같은 EC2 안 컨테이너)
 ```
 
 | 항목 | 선택 | 근거 |
@@ -161,7 +164,8 @@ EC2 t3.micro ── Caddy (Let's Encrypt 자동) ─┬─ /       → 프론트
 | HTTPS | Caddy + Let's Encrypt | **Web Bluetooth가 보안 컨텍스트 전용.** ALB는 월 $16이라 이 규모에 과함 |
 | 도메인 | 가비아 | 인증서·OAuth 리디렉트 모두 도메인에 의존. IP로는 인증서 발급 불가 |
 | 프론트 | 백엔드와 **같은 도메인** | 분리하면 CORS 설정이 따라옴. 얻는 것 없이 실패 지점만 늘어남 |
-| DB | RDS PostgreSQL | 프리티어면 무료. JSON 컬럼(곡선) 처리가 MySQL보다 깔끔 |
+| DB | PostgreSQL, **EC2 안 컨테이너** | 처음엔 RDS로 정했으나, 신규 계정은 프리티어 대신 크레딧 방식이라 RDS가 월 비용을 2배 넘게 늘려 바꿈. JSON 컬럼(곡선) 처리가 MySQL보다 깔끔 |
+| 리전 | 시드니 | 무료 플랜 계정이 이 리전만 허용. 저울 실시간 경로는 서버를 거치지 않아 거리 영향이 거의 없음 |
 | 이미지 저장 | **S3 쓰지 않음** | 아래 참고 |
 
 ### 사진은 저장하지 않는다
@@ -179,11 +183,12 @@ EC2 t3.micro ── Caddy (Let's Encrypt 자동) ─┬─ /       → 프론트
 
 ### 착수 시 고쳐야 하는 것
 
-1. **Vite 프록시는 개발 서버 전용.** 빌드본에는 프록시가 없다 → Caddy가 `/api`를 백엔드로 넘긴다
+1. ~~**Vite 프록시는 개발 서버 전용.**~~ ✅ Caddy가 `/api`를 백엔드로 넘기고, 화면 경로는 전부 `index.html`로
 2. ~~**Alembic 도입.**~~ ✅ 완료 (2026-10-02). `create_all()`은 기존 테이블을 고치지 않아 운영 DB에 쓸 수 없다.
    전체 테스트를 PostgreSQL 17에서도 돌려 통과 확인 — 그 과정에서 시드가 DB id에 의존해
    PostgreSQL에서만 발표 수치가 바뀌는 버그를 발견해 고침
-3. **소셜 로그인.** 배포하면 접속자 전원의 기록이 한곳에 쌓여 정확도 추이가 무의미해진다
+3. **소셜 로그인 — 미정.** 배포하면 접속자 전원의 기록이 한곳에 쌓여 정확도 추이가 무의미해진다.
+   시연 범위에서는 단일 사용자로 두고, 필요해지면 Alembic으로 `user_id`를 추가한다
 
 ### 로컬은 SQLite 그대로
 
@@ -191,7 +196,7 @@ EC2 t3.micro ── Caddy (Let's Encrypt 자동) ─┬─ /       → 프론트
 
 ```
 로컬   기본값                          → SQLite 파일
-배포   DATABASE_URL=postgresql://...   → RDS
+배포   DATABASE_URL=postgresql+psycopg://...   → EC2 안 PostgreSQL
 ```
 
 발표 후 인스턴스를 내려도 로컬에서 그대로 쓸 수 있다.
@@ -202,15 +207,15 @@ EC2 t3.micro ── Caddy (Let's Encrypt 자동) ─┬─ /       → 프론트
 ### 순서
 
 ```
-도메인 → Alembic → PostgreSQL 전환 → Docker → EC2·RDS·Caddy → 소셜 로그인
+도메인 ✅ → Alembic ✅ → PostgreSQL 검증 ✅ → Docker ✅ → EC2·Caddy ✅ → (소셜 로그인 미정)
 ```
 
 **도메인이 먼저다.** 인증서와 OAuth 리디렉트가 모두 도메인에 의존한다.
 
 ### 정리 계획
 
-발표 후 유지하지 않는다. **인스턴스·RDS·Elastic IP를 함께 해제한다** —
-Elastic IP는 인스턴스에 붙어 있지 않으면 과금된다.
+발표 후 유지하지 않는다. **인스턴스와 Elastic IP를 함께 해제한다** —
+Elastic IP는 인스턴스에 붙어 있지 않아도 과금된다. 절차는 [`deploy.md`](deploy.md) "발표 후 정리".
 
 ---
 
