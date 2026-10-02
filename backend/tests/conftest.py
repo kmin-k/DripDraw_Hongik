@@ -19,10 +19,15 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker
 
+from app.config import settings
 from app.database import Base, get_db
 from app.main import app
 
 TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
+
+# 앱이 켜질 때 실제 dripdraw.db를 마이그레이션하지 않게 합니다. 테스트 DB는 아래에서 직접 만듭니다.
+# 모델과 마이그레이션이 같은 구조를 만드는지는 test_migrations.py가 따로 확인합니다.
+settings.auto_migrate = False
 
 
 def _fresh_engine(tmp_path, name: str) -> Engine:

@@ -14,6 +14,9 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite:///./dripdraw.db"
 
+    # 서버가 켜질 때 DB를 최신 구조로 맞출지. 테스트는 테스트마다 새 DB를 직접 만들어서 끕니다.
+    auto_migrate: bool = True
+
     # 프론트 개발 서버(Vite). CONTRIBUTING.md "실행 포트" 참고.
     cors_origins: list[str] = ["http://localhost:5180"]
 

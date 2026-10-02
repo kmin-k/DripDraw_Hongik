@@ -10,17 +10,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.database import Base, engine
+from app.migrate import upgrade_to_head
 from app.routers import beans, brews, feedback, recipes, vision
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 마이그레이션 도구 없이 create_all로 시작합니다 (erd.md "데모 범위에서 뺀 것").
-    # models를 import해야 Base.metadata에 테이블이 등록됩니다.
-    from app import models  # noqa: F401
-
-    Base.metadata.create_all(bind=engine)
+    # 켜질 때 DB를 최신 구조로 맞춥니다. 이미 최신이면 아무 일도 하지 않습니다.
+    # create_all과 달리 기존 테이블에 컬럼을 더할 수 있어 서버 DB를 지우지 않아도 됩니다.
+    if settings.auto_migrate:
+        upgrade_to_head()
     yield
 
 

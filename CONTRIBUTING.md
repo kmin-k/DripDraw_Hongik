@@ -119,6 +119,36 @@ PR을 열거나 `dev`·`main`에 push하면 위 명령이 **GitHub에서 자동�
 
 백엔드 CORS 허용 origin은 `http://localhost:5180`입니다. 포트를 바꾸려면 `frontend/vite.config.ts`와 `backend/app/config.py`를 **함께** 고쳐야 합니다.
 
+## DB 구조 바꾸기
+
+DB 구조는 **Alembic 마이그레이션**(`backend/migrations/versions/`)으로 관리합니다. 서버가 켜질 때
+자동으로 최신 구조로 맞추므로, **모델을 바꾸는 사람만** 아래를 하면 됩니다.
+
+```bash
+cd backend
+# 1. app/models.py 수정
+# 2. 바뀐 부분을 마이그레이션 초안으로 만들기 (로컬 dripdraw.db와 모델을 비교합니다)
+alembic revision --autogenerate -m "recipes에 memo 추가"
+# 3. migrations/versions/에 생긴 파일을 열어 확인 — 의도한 변경만 들어 있는지
+# 4. 적용
+alembic upgrade head
+```
+
+모델과 마이그레이션 파일을 **같은 커밋**에 넣습니다. 마이그레이션을 빠뜨리면
+`tests/test_migrations.py`가 실패합니다 — 모델과 마이그레이션이 같은 DB를 만드는지 비교하는 테스트입니다.
+
+**서버 DB는 지우지 않습니다.** 예전에는 모델을 바꾸면 `dripdraw.db`를 지웠지만, 배포 서버의 실제 기록은
+지울 수 없어서 바꾼 부분만 적용하는 방식으로 옮겼습니다.
+
+배포용 PostgreSQL에서도 통과하는지 확인하려면 (Docker 필요):
+
+```bash
+docker run -d --name dripdraw-pg-test -e POSTGRES_PASSWORD=test -p 5433:5432 postgres:17-alpine
+$env:TEST_DATABASE_URL = "postgresql+psycopg://postgres:test@localhost:5433/postgres"
+pytest
+docker rm -f dripdraw-pg-test
+```
+
 ## Rule Table 원본 관리
 
 **[`docs/rule-table.md`](docs/rule-table.md)가 단일 기준입니다.** 엑셀 원본(`BrewIQ_RuleTable_v0.1.xlsx`)은 팀장 로컬 보관 참고 자료이며, 레포에 넣지 않습니다.

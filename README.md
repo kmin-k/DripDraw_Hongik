@@ -114,9 +114,11 @@ cd backend && pytest && ruff check .
 cd frontend && npm test && npm run lint
 ```
 
-> ⚠️ **모델(`app/models.py`)을 바꾸면 `backend/dripdraw.db`를 지우고 다시 실행하세요.**
-> 마이그레이션 도구가 없어 `create_all()`이 기존 테이블을 변경하지 않습니다. 테스트는 매번 새 DB를 쓰므로
-> **테스트는 통과하는데 서버만 500이 나는** 형태로 드러납니다. 개발용 DB라 지워도 됩니다.
+> DB 구조는 **Alembic 마이그레이션**으로 관리합니다. 서버가 켜질 때 자동으로 최신 구조로 맞추므로
+> 평소에는 신경 쓸 것이 없습니다. 모델(`app/models.py`)을 바꿀 때만 마이그레이션 파일을 함께 만듭니다 —
+> [협업 가이드](CONTRIBUTING.md) "DB 구조 바꾸기". 빠뜨리면 `tests/test_migrations.py`가 실패합니다.
+>
+> 마이그레이션 도입 전에 만든 `dripdraw.db`가 있으면 서버가 켜지지 않습니다. 지우고 시드를 다시 넣으세요.
 
 ## 문서
 

@@ -1,7 +1,6 @@
 """SQLAlchemy 엔진·세션·Base.
 
-마이그레이션 도구(Alembic)는 넣지 않습니다. 스키마가 안정되면 검토합니다.
-(erd.md "데모 범위에서 뺀 것")
+테이블은 여기서 만들지 않습니다. Alembic 마이그레이션이 만듭니다 (app/migrate.py).
 """
 
 from collections.abc import Generator

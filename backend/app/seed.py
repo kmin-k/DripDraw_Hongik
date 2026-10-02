@@ -20,7 +20,8 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
-from app.database import Base, SessionLocal, engine
+from app.database import SessionLocal
+from app.migrate import upgrade_to_head
 from app.models import Bean, Brew, Feedback, GrindAnalysis, Recipe
 from app.routers.feedback import adjust_recipe
 from app.schemas import RecipeAdjustRequest
@@ -199,7 +200,9 @@ def seed(db: Session) -> None:
 
 
 def main() -> None:
-    Base.metadata.create_all(bind=engine)
+    # 서버와 같은 방식으로 테이블을 만듭니다. create_all로 만들면 마이그레이션 이력이 없는 DB가 되어
+    # 다음에 서버가 켜질 때 "이미 있는 테이블을 또 만들려다" 실패합니다.
+    upgrade_to_head()
     db = SessionLocal()
     try:
         seed(db)
