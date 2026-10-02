@@ -109,7 +109,9 @@ def seed(db: Session) -> None:
     day_offset = 0
     brew_ids: list[int] = []
 
-    for bean, attempt_count in zip(beans, attempt_counts, strict=True):
+    for bean_number, (bean, attempt_count) in enumerate(
+        zip(beans, attempt_counts, strict=True), start=1
+    ):
         result = generate_recipe(
             dose_g=20,
             drink_type="HOT",
@@ -142,8 +144,10 @@ def seed(db: Session) -> None:
         # 오래된 회차부터 넣습니다. 뒤로 갈수록 최근이고, 정확도가 좋아집니다.
         for attempt_index in range(attempt_count):
             params = ATTEMPTS[attempt_index]
+            # 난수 시드에 DB id를 쓰지 않습니다. PostgreSQL은 행을 지워도 id를 이어서 매겨
+            # 다시 넣을 때마다 발표용 수치가 바뀝니다 (SQLite는 1부터 다시 매겨 안 드러났음).
             curve = simulate_brew(
-                recipe.target_curve, **params, seed=recipe.id * 100 + attempt_index
+                recipe.target_curve, **params, seed=bean_number * 100 + attempt_index
             )
             started = now - timedelta(days=(total_guided - 1 - day_offset) * 2, hours=1)
             day_offset += 1

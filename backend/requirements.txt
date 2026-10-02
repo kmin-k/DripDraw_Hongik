@@ -1,10 +1,16 @@
-fastapi
-uvicorn[standard]
-sqlalchemy
-pydantic
-pydantic-settings
+# 버전을 고정합니다. 배포 서버가 이 노트북에서 테스트를 통과한 것과 같은 버전을 받아야 합니다.
+# 올릴 때는 전체 테스트를 돌린 뒤 여기 숫자를 함께 바꿉니다.
+fastapi==0.141.1
+uvicorn[standard]==0.52.1
+sqlalchemy==2.0.51
+pydantic==2.13.4
+pydantic-settings==2.14.2
 
-python-multipart
-opencv-python-headless
-numpy
-pillow-heif
+# PostgreSQL 드라이버. 로컬 SQLite에서는 쓰이지 않습니다.
+psycopg[binary]==3.3.6
+
+# 분쇄도 측정 (Vision)
+python-multipart==0.0.32
+opencv-python-headless==5.0.0.93
+numpy==2.5.2
+pillow-heif==1.8.0
