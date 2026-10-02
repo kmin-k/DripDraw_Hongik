@@ -1,0 +1,34 @@
+# Caddy 설정. docker-compose.yml의 web 서비스가 읽습니다.
+#
+# SITE_ADDRESS
+#   로컬 확인  :80              → http://localhost (인증서 없음)
+#   배포       dripdraw.store   → HTTPS 인증서를 자동으로 받고 갱신합니다
+#
+# Web Bluetooth는 HTTPS(또는 localhost)에서만 동작합니다. 배포에서 HTTPS가 선택이 아닌 이유입니다.
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	# API와 문서는 백엔드로. 개발 서버에서는 Vite가 하던 일입니다.
+	# 화면과 API가 같은 주소라 CORS 설정이 필요 없습니다.
+	@backend path /api/* /health /docs /openapi.json
+	handle @backend {
+		reverse_proxy backend:8000
+	}
+
+	handle {
+		root * /srv
+
+		# assets/는 파일 이름에 내용 해시가 붙어 있어 오래 캐시해도 안전합니다.
+		# 그 밖의 것(첫 화면·서비스 워커·앱 정보)은 캐시하지 않습니다. 캐시되면 새로 배포해도 옛 화면이 뜹니다.
+		# "assets가 아닌 것"으로 잡아야 /history/3처럼 깊은 주소로 받은 첫 화면도 포함됩니다.
+		@nocache not path /assets/*
+		header @nocache Cache-Control "no-cache"
+		header /assets/* Cache-Control "public, max-age=31536000, immutable"
+
+		# /history/3 같은 주소에서 새로고침하면 그런 파일은 없습니다.
+		# 화면 경로는 전부 index.html을 주고, 어떤 화면을 그릴지는 React가 정합니다.
+		try_files {path} /index.html
+		file_server
+	}
+}

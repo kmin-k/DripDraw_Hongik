@@ -1,0 +1,60 @@
+# 배포 구성. 이 노트북과 서버에서 똑같이 돕니다.
+#
+#   copy .env.example .env        값 채우기 (DB_PASSWORD 필수)
+#   docker compose up -d --build  빌드하고 켜기
+#   docker compose exec backend python -m app.seed   데모 데이터 넣기 (기존 데이터 삭제)
+#   docker compose logs -f backend                    로그 보기
+#   docker compose down           끄기 (데이터는 볼륨에 남음)
+#
+# 자세한 절차는 docs/deploy.md.
+
+name: dripdraw
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: dripdraw
+      POSTGRES_USER: dripdraw
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?.env에 DB_PASSWORD를 넣으세요}
+    volumes:
+      # 컨테이너를 지워도 데이터는 여기 남습니다. `docker compose down -v`만 지웁니다.
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dripdraw -d dripdraw"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    # 포트를 밖으로 열지 않습니다. backend만 컨테이너 네트워크 안에서 접속합니다.
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://dripdraw:${DB_PASSWORD}@db:5432/dripdraw
+    depends_on:
+      db:
+        # DB가 접속을 받을 준비가 된 뒤에 켭니다. 켜지자마자 마이그레이션을 돌리기 때문입니다.
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build: ./frontend
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # 발급받은 HTTPS 인증서. 지우면 재발급하는데, 발급 횟수 제한이 있어 남겨 둡니다.
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  db-data:
+  caddy-data:
+  caddy-config:

@@ -129,6 +129,7 @@ cd frontend && npm test && npm run lint
 - [Rule Table](docs/rule-table.md) — Target Curve 계산 규칙
 - [데이터 모델 (ERD)](docs/erd.md) — 테이블과 설계 근거
 - [API 명세](docs/api.md) — 엔드포인트별 요청·응답
+- [배포](docs/deploy.md) — Docker 구성과 절차
 
 ## 팀
 

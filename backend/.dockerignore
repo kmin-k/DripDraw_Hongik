@@ -1,0 +1,11 @@
+# 이미지에 넣지 않는 것. 로컬 DB·비밀값이 서버로 딸려 가지 않게 합니다.
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.env
+.env.*
+*.db
+tests/
+coffeegrindsize/
