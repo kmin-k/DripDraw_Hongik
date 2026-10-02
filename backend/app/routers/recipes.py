@@ -14,7 +14,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select, update
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
 from app.models import Bean, Brew, Feedback, Recipe
@@ -154,7 +154,10 @@ def list_recipes(db: DbSession) -> RecipeList:
     ):
         latest.setdefault(brew.recipe_id, brew)
 
-    recipes = db.scalars(select(Recipe).order_by(Recipe.id.desc())).all()
+    # 원두 이름을 레시피마다 따로 묻지 않습니다 (N+1).
+    recipes = db.scalars(
+        select(Recipe).options(selectinload(Recipe.bean)).order_by(Recipe.id.desc())
+    ).all()
     items = []
     for recipe in recipes:
         last = latest.get(recipe.id)

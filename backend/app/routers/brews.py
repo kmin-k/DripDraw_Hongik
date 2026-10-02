@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, update
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
 from app.models import Bean, Brew, Recipe
@@ -81,8 +81,16 @@ def list_brews(db: DbSession, limit: Annotated[int, Query(ge=1, le=200)] = 50) -
     """
     # 화면에 보여주는 값(추출 시각)으로 정렬합니다. 저장 순서(id)로 정렬하면
     # 둘이 어긋날 때 목록이 뒤죽박죽으로 보입니다. id는 같은 시각일 때의 기준입니다.
+    # 항목마다 레시피·원두·평가를 따로 물으면 50건에 151번 묻습니다 (N+1).
+    # 관계마다 한꺼번에 가져와 항목 수와 무관하게 4번으로 끝냅니다 (tests/test_query_count.py).
     brews = db.scalars(
-        select(Brew).order_by(Brew.started_at.desc(), Brew.id.desc()).limit(limit)
+        select(Brew)
+        .options(
+            selectinload(Brew.recipe).selectinload(Recipe.bean),
+            selectinload(Brew.feedback),
+        )
+        .order_by(Brew.started_at.desc(), Brew.id.desc())
+        .limit(limit)
     ).all()
 
     items = []
