@@ -50,6 +50,16 @@ export function buildTrend(items: BrewListItem[]): TrendSeries[] {
     .sort((a, b) => b.rmses.length - a.rmses.length || a.recipeId - b.recipeId);
 }
 
+/**
+ * 가장 최근에 정확도를 잰 추출. 목록이 최신순이라 앞에서부터 정확도가 있는 첫 항목입니다.
+ *
+ * 홈에서 "평균 정확도" 대신 씁니다. 평균은 서로 다른 레시피를 섞어 뜻이 약하고,
+ * 사용자가 궁금한 건 "방금 얼마나 잘 내렸나"입니다. 자유 모드는 정확도가 없어 건너뜁니다.
+ */
+export function latestMeasured(items: BrewListItem[]): BrewListItem | null {
+  return items.find((item) => item.rmse !== null) ?? null;
+}
+
 /** 회차 수가 가장 많은 계열에 맞춘 표 행. Recharts에 그대로 넘깁니다. */
 export function toChartRows(series: TrendSeries[]): Record<string, number | null>[] {
   const longest = Math.max(0, ...series.map((s) => s.rmses.length));

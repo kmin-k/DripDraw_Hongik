@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { api, type BrewListItem } from "../lib/api";
 import { formatDateTime } from "../lib/format";
+import { buildTrend, improvementPercent, latestMeasured } from "../lib/trend";
 
 /**
  * 첫 화면.
@@ -15,18 +16,12 @@ import { formatDateTime } from "../lib/format";
 
 const RECENT_COUNT = 3;
 
-/** 평균을 낼 때 자유 모드는 뺍니다. 비교할 목표가 없어 정확도가 존재하지 않습니다. */
-function averageRmse(items: BrewListItem[]): number | null {
-  const measured = items.filter((item) => item.rmse !== null);
-  if (measured.length === 0) return null;
-  return measured.reduce((sum, item) => sum + (item.rmse ?? 0), 0) / measured.length;
-}
-
-function Summary({ label, value }: { label: string; value: string }) {
+function Summary({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
     <div className="rounded-xl border bg-white p-4">
       <div className="text-xs text-slate-500">{label}</div>
       <div className="mt-1 font-mono text-2xl tabular-nums">{value}</div>
+      {note && <div className="mt-0.5 truncate text-xs text-slate-500">{note}</div>}
     </div>
   );
 }
@@ -42,7 +37,10 @@ export default function HomePage() {
   }, []);
 
   const recent = items?.slice(0, RECENT_COUNT) ?? [];
-  const average = items ? averageRmse(items) : null;
+  const latest = items ? latestMeasured(items) : null;
+  // 가장 많이 내린 레시피 하나. 이 프로젝트가 주장하는 "반복할수록 나아진다"를 홈에서 바로 보여줍니다.
+  const bestTrend = items ? (buildTrend(items)[0] ?? null) : null;
+  const improvement = bestTrend ? improvementPercent(bestTrend.rmses) : null;
 
   return (
     <section className="space-y-6">
@@ -63,8 +61,37 @@ export default function HomePage() {
       {items !== null && items.length > 0 && (
         <div className="grid grid-cols-2 gap-3">
           <Summary label="총 추출" value={`${items.length}회`} />
-          <Summary label="평균 정확도" value={average === null ? "—" : `${average.toFixed(1)} g`} />
+          {/* 서로 다른 레시피를 섞은 평균은 뜻이 약합니다. 가장 최근에 잰 값을 보여줍니다. */}
+          <Summary
+            label="최근 정확도"
+            value={latest?.rmse == null ? "—" : `${latest.rmse.toFixed(1)} g`}
+            note={
+              latest
+                ? (latest.recipeName ?? latest.beanName ?? formatDateTime(latest.brewedAt))
+                : "레시피를 따라 내리면 나옵니다"
+            }
+          />
         </div>
+      )}
+
+      {/* 같은 레시피를 두 번 이상 내려야 생깁니다. 정확도는 작을수록 좋아 줄어든 비율이 개선입니다. */}
+      {bestTrend && improvement !== null && (
+        <Link
+          to="/history"
+          className="block rounded-xl border bg-white px-4 py-3 text-sm hover:bg-slate-50"
+        >
+          <div className="text-xs text-slate-500">가장 많이 내린 레시피</div>
+          <div className="mt-0.5 flex flex-wrap items-baseline justify-between gap-2">
+            <span className="font-medium">{bestTrend.label}</span>
+            <span className="text-slate-600">
+              {bestTrend.rmses.length}회 · {bestTrend.rmses[0].toFixed(1)} →{" "}
+              {bestTrend.rmses[bestTrend.rmses.length - 1].toFixed(1)} g{" "}
+              <b className={improvement >= 0 ? "text-emerald-700" : "text-red-700"}>
+                {improvement >= 0 ? "▼" : "▲"} {Math.abs(improvement).toFixed(0)}%
+              </b>
+            </span>
+          </div>
+        </Link>
       )}
 
       <div>

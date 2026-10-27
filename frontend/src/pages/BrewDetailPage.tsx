@@ -13,7 +13,7 @@ import {
 import DeleteButton from "../components/DeleteButton";
 import SaveAsRecipeForm from "../components/SaveAsRecipeForm";
 import { ApiError, api, type BrewDetail, type Recipe } from "../lib/api";
-import { formatDateTime, formatDuration } from "../lib/format";
+import { formatDateTime, formatDuration, formatGram } from "../lib/format";
 import { downsample } from "../lib/useBrewSession";
 import { interpolateAt } from "../lib/rmse";
 
@@ -173,7 +173,7 @@ export default function BrewDetailPage() {
       </div>
 
       <div className={`grid gap-3 ${recipe ? "grid-cols-3" : "grid-cols-2"}`}>
-        <Stat label="최종 물량" value={`${brew.finalWeightG.toFixed(1)} g`} />
+        <Stat label="최종 물량" value={`${formatGram(brew.finalWeightG, 1)} g`} />
         <Stat label="소요 시간" value={formatDuration(brew.durationSec)} />
         {/* 자유 모드는 비교할 목표가 없어 정확도 칸을 아예 두지 않습니다. */}
         {recipe && (

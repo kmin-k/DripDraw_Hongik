@@ -16,6 +16,7 @@ import type { ScaleStatus } from "../ble/types";
 import { useScale } from "../ble/useScale";
 import SaveAsRecipeForm from "../components/SaveAsRecipeForm";
 import { api, type BrewResult, type Recipe } from "../lib/api";
+import { formatGram } from "../lib/format";
 import { brewEnd, nextPourTarget, pourTargets } from "../lib/pours";
 import type { Curve } from "../lib/rmse";
 import { DROP_ABORT_G, useBrewSession } from "../lib/useBrewSession";
@@ -154,6 +155,8 @@ export default function BrewPage() {
   const targets = useMemo(() => pourTargets(target), [target]);
   const finishPoint = useMemo(() => brewEnd(target), [target]);
   const upcoming = nextPourTarget(targets, brew.elapsedSec);
+  // 마지막 주수까지 끝났고 물이 다 빠질 시간도 지났는데 아직 기록 중인 상태.
+  const overtime = !upcoming && finishPoint !== null && brew.elapsedSec >= finishPoint.sec;
 
   const label = STATUS_LABEL[scale.status];
   const connected = scale.status === "CONNECTED";
@@ -203,7 +206,7 @@ export default function BrewPage() {
       )}
 
       <div className={`grid gap-3 ${recipe ? "grid-cols-3" : "grid-cols-2"}`}>
-        <Stat label="부은 물" value={brew.weightG.toFixed(1)} unit="g" />
+        <Stat label="부은 물" value={formatGram(brew.weightG, 1)} unit="g" />
         <Stat label="경과" value={brew.elapsedSec.toFixed(0)} unit="초" />
         {/* 자유 모드는 비교할 목표가 없어 정확도 칸을 아예 두지 않습니다. "—"만 띄우면 고장처럼 보입니다. */}
         {recipe && (
@@ -215,9 +218,29 @@ export default function BrewPage() {
         )}
       </div>
 
+      {/* 경과 시간은 저울 패킷이 도착할 때 갱신됩니다. 연결이 끊기면 숫자가 멈춰 고장처럼 보여
+          이유를 알립니다. 다시 연결되면 실제 흐른 시간으로 이어집니다. */}
+      {(running || paused) && !connected && (
+        <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <div className="font-medium">
+            {scale.status === "RECONNECTING" ? "저울 다시 연결하는 중…" : "저울 연결이 끊겼습니다"}
+          </div>
+          <div className="mt-0.5 text-amber-800">
+            무게가 들어오지 않아 시간과 그래프가 멈춰 있습니다. 다시 연결되면 이어서 기록합니다.
+            {scale.status === "DISCONNECTED" && " 아래 '저울 다시 연결'을 누르세요."}
+          </div>
+        </div>
+      )}
+
       {/* 추출 중에는 그래프를 읽을 여유가 없습니다. 다음에 맞출 값을 글자로 크게 둡니다. */}
       {recipe && (running || paused) && (
-        <div className="rounded border border-slate-900 bg-slate-900 p-4 text-white">
+        <div
+          className={`rounded border p-4 ${
+            overtime
+              ? "border-amber-500 bg-amber-500 text-white"
+              : "border-slate-900 bg-slate-900 text-white"
+          }`}
+        >
           {upcoming ? (
             <>
               <div className="text-xs text-slate-300">
@@ -234,8 +257,20 @@ export default function BrewPage() {
                 </span>
               </div>
               <div className="mt-1 text-xs text-slate-400">
-                지금 {brew.weightG.toFixed(0)} g ·{" "}
+                지금 {formatGram(brew.weightG)} g ·{" "}
                 {Math.max(0, upcoming.gram - brew.weightG).toFixed(0)} g 더
+              </div>
+            </>
+          ) : overtime && finishPoint ? (
+            // 목표 시간을 넘겨도 기록은 계속됩니다. 종료를 잊으면 빈 시간이 길게 붙어
+            // 정확도 계산에 그대로 들어가므로, 넘겼다는 것을 눈에 띄게 알립니다.
+            <>
+              <div className="text-xs text-amber-50">목표 시간이 지났습니다</div>
+              <div className="mt-1 text-lg font-medium">
+                물이 다 빠졌으면 <b>추출 종료</b>를 누르세요
+              </div>
+              <div className="mt-1 text-sm text-amber-50">
+                목표 {finishPoint.sec}초 · {Math.floor(brew.elapsedSec - finishPoint.sec)}초 초과
               </div>
             </>
           ) : (
@@ -243,7 +278,7 @@ export default function BrewPage() {
               <div className="text-xs text-slate-300">모두 부었습니다</div>
               <div className="mt-1 text-lg">물이 다 빠질 때까지 기다리세요</div>
               {/* 남은 시간이 없으면 언제까지 기다려야 하는지 알 수 없습니다. */}
-              {finishPoint && brew.elapsedSec < finishPoint.sec && (
+              {finishPoint && (
                 <div className="mt-1 text-sm text-slate-300">
                   {finishPoint.sec}초까지 · {Math.ceil(finishPoint.sec - brew.elapsedSec)}초 남음
                 </div>
@@ -425,18 +460,22 @@ export default function BrewPage() {
       )}
 
       <div className="flex flex-wrap gap-2">
-        {!connected ? (
-          <button
-            onClick={scale.connect}
-            disabled={!scale.isSupported || scale.status === "CONNECTING"}
-            className={btnPrimary}
-          >
-            저울 연결
-          </button>
-        ) : brew.phase === "IDLE" ? (
-          <button onClick={startBrew} className={btnPrimary}>
-            추출 시작
-          </button>
+        {/* 추출 단계를 먼저 봅니다. 연결 여부를 먼저 보면 추출 중에 저울이 끊겼을 때
+            종료 버튼이 사라져, 그때까지 기록한 것을 저장할 방법이 없어집니다. */}
+        {brew.phase === "IDLE" ? (
+          !connected ? (
+            <button
+              onClick={scale.connect}
+              disabled={!scale.isSupported || scale.status === "CONNECTING"}
+              className={btnPrimary}
+            >
+              저울 연결
+            </button>
+          ) : (
+            <button onClick={startBrew} className={btnPrimary}>
+              추출 시작
+            </button>
+          )
         ) : running ? (
           <>
             <button onClick={brew.pause} className={btn}>
@@ -461,6 +500,14 @@ export default function BrewPage() {
           </button>
         )}
 
+        {/* 자동 재연결이 끝내 실패한 경우. 다시 붙으면 같은 추출에 이어서 기록합니다 —
+            시간은 패킷 도착 시각으로 계산해 끊긴 동안도 흐른 것으로 잡힙니다. */}
+        {(running || paused) && scale.status === "DISCONNECTED" && (
+          <button onClick={scale.connect} disabled={!scale.isSupported} className={btn}>
+            저울 다시 연결
+          </button>
+        )}
+
         <button onClick={scale.tare} disabled={!connected || running} className={btn}>
           영점
         </button>
@@ -480,8 +527,9 @@ export default function BrewPage() {
         <div className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
           <div className="font-medium">기록 저장 완료 (#{saved.brewId})</div>
           <div className="mt-1">
-            {brew.sampleCount}개 측정 · {saved.durationSec}초 · 최종 {saved.finalWeightG.toFixed(1)}{" "}
-            g{saved.rmse !== null && ` · 정확도 ${saved.rmse.toFixed(1)} g`}
+            {brew.sampleCount}개 측정 · {saved.durationSec}초 · 최종{" "}
+            {formatGram(saved.finalWeightG, 1)} g
+            {saved.rmse !== null && ` · 정확도 ${saved.rmse.toFixed(1)} g`}
           </div>
           {saved.rmse !== null && brew.rmse !== null && (
             <div className="mt-1 text-xs text-emerald-700">

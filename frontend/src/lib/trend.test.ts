@@ -1,7 +1,24 @@
 import { describe, expect, it } from "vitest";
 
 import type { BrewListItem } from "./api";
-import { buildTrend, improvementPercent, toChartRows } from "./trend";
+import { buildTrend, improvementPercent, latestMeasured, toChartRows } from "./trend";
+
+describe("latestMeasured", () => {
+  it("최신순 목록에서 정확도가 있는 첫 추출", () => {
+    const items = [
+      brew({ brewId: 9, recipeId: null, rmse: null, freeMode: true }),
+      brew({ brewId: 8, rmse: 2.1 }),
+      brew({ brewId: 7, rmse: 6.4 }),
+    ];
+    // 자유 모드는 정확도가 없어 건너뜁니다.
+    expect(latestMeasured(items)?.brewId).toBe(8);
+  });
+
+  it("잰 적이 없으면 null", () => {
+    expect(latestMeasured([brew({ rmse: null, recipeId: null, freeMode: true })])).toBeNull();
+    expect(latestMeasured([])).toBeNull();
+  });
+});
 
 function brew(over: Partial<BrewListItem>): BrewListItem {
   return {

@@ -12,7 +12,7 @@ import {
 } from "recharts";
 
 import { api, type BrewListItem } from "../lib/api";
-import { formatDateTime, formatDuration } from "../lib/format";
+import { formatDateTime, formatDuration, formatGram } from "../lib/format";
 import { buildTrend, improvementPercent, toChartRows } from "../lib/trend";
 
 /**
@@ -199,7 +199,7 @@ export default function HistoryPage() {
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-2 tabular-nums">{item.finalWeightG.toFixed(0)} g</td>
+                  <td className="px-3 py-2 tabular-nums">{formatGram(item.finalWeightG)} g</td>
                   <td className="px-3 py-2 tabular-nums text-slate-600">
                     {formatDuration(item.durationSec)}
                   </td>
