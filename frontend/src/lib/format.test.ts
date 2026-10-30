@@ -1,6 +1,23 @@
 import { describe, expect, it } from "vitest";
 
-import { formatDateTime, formatDuration, formatGram } from "./format";
+import { formatClock, formatDateTime, formatDuration, formatGram } from "./format";
+
+describe("formatClock", () => {
+  it("저울 타이머처럼 분:초", () => {
+    expect(formatClock(35)).toBe("0:35");
+    expect(formatClock(70)).toBe("1:10");
+    expect(formatClock(165)).toBe("2:45");
+  });
+
+  it("초가 한 자리면 0을 채운다", () => {
+    expect(formatClock(65)).toBe("1:05");
+    expect(formatClock(0)).toBe("0:00");
+  });
+
+  it("소수는 반올림해서 60초가 '0:60'이 되지 않는다", () => {
+    expect(formatClock(59.6)).toBe("1:00");
+  });
+});
 
 describe("formatGram", () => {
   it("★ 반올림해서 0이 되는 작은 음수는 0으로", () => {

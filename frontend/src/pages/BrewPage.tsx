@@ -4,8 +4,8 @@ import {
   CartesianGrid,
   Line,
   LineChart,
-  ReferenceArea,
   ReferenceDot,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -16,8 +16,8 @@ import type { ScaleStatus } from "../ble/types";
 import { useScale } from "../ble/useScale";
 import SaveAsRecipeForm from "../components/SaveAsRecipeForm";
 import { api, type BrewResult, type Recipe } from "../lib/api";
-import { formatGram } from "../lib/format";
-import { brewEnd, nextPourTarget, pourTargets } from "../lib/pours";
+import { formatClock, formatDuration, formatGram } from "../lib/format";
+import { brewEnd, nextPourTarget, pourTargets, type PourTarget } from "../lib/pours";
 import type { Curve } from "../lib/rmse";
 import { DROP_ABORT_G, useBrewSession } from "../lib/useBrewSession";
 
@@ -47,15 +47,58 @@ const btn = "rounded border px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity
 const btnPrimary =
   "rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40";
 
-function Stat({ label, value, unit }: { label: string; value: string; unit: string }) {
+const unitClass = "ml-0.5 text-sm text-slate-400 sm:text-base";
+
+/** 지금 부어야 할 주수의 색. 그래프 세로선·가로선·시간표 칸이 모두 이 색으로 묶입니다. */
+const AMBER = "#d97706";
+
+/** 지난 주수는 흐리게, 지금 주수는 주황, 앞으로 올 주수는 보통. */
+type PourState = "past" | "current" | "next";
+
+const POUR_COLOR: Record<PourState, { line: string; dot: string; text: string }> = {
+  past: { line: "#e2e8f0", dot: "#cbd5e1", text: "#94a3b8" },
+  current: { line: AMBER, dot: AMBER, text: AMBER },
+  next: { line: "#94a3b8", dot: "#0f172a", text: "#334155" },
+};
+
+const POUR_CHIP: Record<PourState, string> = {
+  past: "border-slate-200 text-slate-400",
+  current: "border-amber-600 bg-amber-600 text-white",
+  next: "border-slate-300 text-slate-700",
+};
+
+function Stat({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="rounded border bg-white p-4 text-center">
+    // 폰에서는 세 칸이 좁아 글자와 여백을 한 단계 줄입니다. "1분 10초"가 넘치지 않게.
+    <div className="rounded border bg-white p-3 text-center sm:p-4">
       <div className="text-xs text-slate-500">{label}</div>
-      <div className="font-mono text-3xl tabular-nums">
-        {value}
-        <span className="ml-1 text-base text-slate-400">{unit}</span>
+      <div className="font-mono text-2xl whitespace-nowrap tabular-nums sm:text-3xl">
+        {children}
       </div>
     </div>
+  );
+}
+
+/** 숫자는 크게, 단위는 작게. */
+function Value({ value, unit }: { value: string; unit: string }) {
+  return (
+    <>
+      {value}
+      <span className={unitClass}>{unit}</span>
+    </>
+  );
+}
+
+/** 경과 시간. 1분이 넘으면 "1분 10초"로 — 70초보다 저울 타이머(1:10)와 맞춰 읽기 쉽습니다. */
+function Elapsed({ sec }: { sec: number }) {
+  const whole = Math.floor(sec);
+  const minutes = Math.floor(whole / 60);
+  const seconds = whole % 60;
+  if (minutes === 0) return <Value value={String(seconds)} unit="초" />;
+  return (
+    <>
+      <Value value={String(minutes)} unit="분" /> <Value value={String(seconds)} unit="초" />
+    </>
   );
 }
 
@@ -165,6 +208,12 @@ export default function BrewPage() {
   const finished = brew.phase === "FINISHED";
   const aborted = brew.phase === "ABORTED";
 
+  // 그래프와 시간표가 같은 기준으로 칠하도록 주수의 상태를 한 곳에서 정합니다.
+  // 추출 전·후에는 "지금"이 없으므로 강조하지 않습니다.
+  const currentPour = (running || paused) && upcoming ? upcoming : null;
+  const pourState = (pour: PourTarget): PourState =>
+    pour.index === currentPour?.index ? "current" : brew.elapsedSec >= pour.sec ? "past" : "next";
+
   // 새로고침이나 직접 진입이면 넘겨받은 상태가 없습니다. 어느 모드인지 알 수 없으니 되돌립니다.
   if (!recipe && !freeMode) {
     return (
@@ -206,15 +255,17 @@ export default function BrewPage() {
       )}
 
       <div className={`grid gap-3 ${recipe ? "grid-cols-3" : "grid-cols-2"}`}>
-        <Stat label="부은 물" value={formatGram(brew.weightG, 1)} unit="g" />
-        <Stat label="경과" value={brew.elapsedSec.toFixed(0)} unit="초" />
+        <Stat label="부은 물">
+          <Value value={formatGram(brew.weightG, 1)} unit="g" />
+        </Stat>
+        <Stat label="경과">
+          <Elapsed sec={brew.elapsedSec} />
+        </Stat>
         {/* 자유 모드는 비교할 목표가 없어 정확도 칸을 아예 두지 않습니다. "—"만 띄우면 고장처럼 보입니다. */}
         {recipe && (
-          <Stat
-            label="정확도 (RMSE)"
-            value={brew.rmse === null ? "—" : brew.rmse.toFixed(1)}
-            unit="g"
-          />
+          <Stat label="정확도 (RMSE)">
+            <Value value={brew.rmse === null ? "—" : brew.rmse.toFixed(1)} unit="g" />
+          </Stat>
         )}
       </div>
 
@@ -252,8 +303,8 @@ export default function BrewPage() {
                 {/* 아직 시작 전이면 "언제 붓기 시작하는지", 붓는 중이면 "언제까지"가 궁금합니다. */}
                 <span className="text-sm text-slate-300">
                   {brew.elapsedSec < upcoming.startSec
-                    ? `${upcoming.startSec}초에 시작 · ${Math.ceil(upcoming.startSec - brew.elapsedSec)}초 뒤`
-                    : `${upcoming.sec}초까지 · ${Math.max(0, Math.ceil(upcoming.sec - brew.elapsedSec))}초 남음`}
+                    ? `${formatDuration(upcoming.startSec)}에 시작 · ${formatDuration(Math.ceil(upcoming.startSec - brew.elapsedSec))} 뒤`
+                    : `${formatDuration(upcoming.sec)}까지 · ${formatDuration(Math.max(0, Math.ceil(upcoming.sec - brew.elapsedSec)))} 남음`}
                 </span>
               </div>
               <div className="mt-1 text-xs text-slate-400">
@@ -270,7 +321,8 @@ export default function BrewPage() {
                 물이 다 빠졌으면 <b>추출 종료</b>를 누르세요
               </div>
               <div className="mt-1 text-sm text-amber-50">
-                목표 {finishPoint.sec}초 · {Math.floor(brew.elapsedSec - finishPoint.sec)}초 초과
+                목표 {formatDuration(finishPoint.sec)} ·{" "}
+                {formatDuration(Math.floor(brew.elapsedSec - finishPoint.sec))} 초과
               </div>
             </>
           ) : (
@@ -280,7 +332,8 @@ export default function BrewPage() {
               {/* 남은 시간이 없으면 언제까지 기다려야 하는지 알 수 없습니다. */}
               {finishPoint && (
                 <div className="mt-1 text-sm text-slate-300">
-                  {finishPoint.sec}초까지 · {Math.ceil(finishPoint.sec - brew.elapsedSec)}초 남음
+                  {formatDuration(finishPoint.sec)}까지 ·{" "}
+                  {formatDuration(Math.ceil(finishPoint.sec - brew.elapsedSec))} 남음
                 </div>
               )}
             </>
@@ -290,7 +343,7 @@ export default function BrewPage() {
 
       {/* 추출 중에는 저울과 드리퍼를 보다가 **힐끗** 보는 화면입니다.
           읽는 시간이 0.5초라고 가정하고, 실제선은 굵게·목표선은 배경으로 물러나게 두고
-          "지금 어디"와 "지금 부을 구간"만 튀게 합니다. */}
+          "지금 어디"만 튀게 합니다. */}
       <div className="rounded border bg-white p-4">
         <div className="mb-2 flex items-center gap-4 text-xs text-slate-600">
           {recipe && (
@@ -303,43 +356,26 @@ export default function BrewPage() {
             <span className="inline-block h-0 w-5 border-t-4 border-emerald-600" />
             실제
           </span>
-          {recipe && (running || paused) && (
-            <span className="flex items-center gap-1">
-              <span className="inline-block h-3 w-5 rounded-sm bg-amber-100" />
-              지금 부을 구간
-            </span>
-          )}
         </div>
         <ResponsiveContainer width="100%" height={320}>
-          {/* 위·오른쪽 여백은 "완성 300 g" 라벨 자리입니다. 완성점이 늘 오른쪽 끝이라 좁으면 잘립니다. */}
-          <LineChart data={brew.chartData} margin={{ top: 24, right: 44, bottom: 5, left: -20 }}>
-            {/* 세로선은 뺍니다. 주수 지점 라벨과 겹쳐 선처럼 읽힙니다. */}
+          {/* 위 여백은 주수 시각 줄, 오른쪽 여백은 목표 물량("240 g")과 "완성 300 g" 자리입니다. */}
+          <LineChart data={brew.chartData} margin={{ top: 28, right: 48, bottom: 5, left: -20 }}>
+            {/* 격자 세로선은 뺍니다. 주수 시작 세로선과 섞여 어느 게 의미 있는 선인지 흐려집니다. */}
             <CartesianGrid stroke="#eef2f7" vertical={false} />
             {/* 목표가 없는 자유 모드에서는 실측 마지막 시각이 그대로 눈금이 됩니다. */}
             <XAxis
               dataKey="sec"
               type="number"
               domain={[0, "dataMax"]}
-              tickFormatter={(v) => Number(v).toFixed(0)}
+              tickFormatter={(v) => formatClock(Number(v))}
               fontSize={13}
             />
-            <YAxis fontSize={13} />
+            {/* 위쪽에 여유를 둡니다. 맨 위 주수의 물량 라벨이 그래프 위 시각 줄과 겹치지 않게. */}
+            <YAxis fontSize={13} domain={[0, (max: number) => Math.ceil((max * 1.12) / 10) * 10]} />
             <Tooltip
               formatter={(value, name) => [`${Number(value).toFixed(1)} g`, name]}
-              labelFormatter={(v) => `${Number(v).toFixed(0)}초`}
+              labelFormatter={(v) => formatDuration(Math.round(Number(v)))}
             />
-
-            {/* 지금 부어야 할 주수 구간. 위 검은 카드가 가리키는 것과 같은 구간입니다.
-                지난 구간과 앞 구간은 칠하지 않아 "여기"가 하나만 남습니다. */}
-            {recipe && (running || paused) && upcoming && (
-              <ReferenceArea
-                x1={upcoming.startSec}
-                x2={upcoming.sec}
-                fill="#fef3c7"
-                fillOpacity={0.6}
-                stroke="none"
-              />
-            )}
 
             {/* 목표는 구간 선형이므로 곡선 보간을 쓰면 실제 규칙과 다른 모양이 됩니다. */}
             {recipe && (
@@ -380,46 +416,75 @@ export default function BrewPage() {
               />
             )}
 
-            {/* 주수마다 두 지점을 찍습니다.
-                **시작에는 시간**(언제 붓기 시작하는지), **끝에는 물량**(얼마까지 붓는지).
-                한 점에 둘 다 적으면 글자가 길어져 옆 점과 겹칩니다.
-                아직 지나지 않은 지점은 진하게, 지난 지점은 흐리게 둡니다. */}
-            {targets.flatMap((pour) => [
-              <ReferenceDot
-                key={`start-${pour.startSec}`}
-                x={pour.startSec}
-                y={pour.startGram}
-                r={3}
-                fill={brew.elapsedSec >= pour.startSec ? "#cbd5e1" : "#64748b"}
-                stroke="#fff"
-                strokeWidth={1.5}
+            {/* **언제는 세로선, 얼마나는 가로선.**
+                주수 시작마다 세로선을 긋고 시각을 그래프 맨 위 한 줄에 둡니다 — 시간표처럼 가로로 읽힙니다.
+                점 옆에 시각을 붙이면 어느 점의 시각인지 헷갈리고, 위아래로 흩어져 한 줄로 안 읽혔습니다. */}
+            {targets.map((pour) => {
+              const state = pourState(pour);
+              return (
+                <ReferenceLine
+                  key={`start-${pour.index}`}
+                  x={pour.startSec}
+                  stroke={POUR_COLOR[state].line}
+                  strokeWidth={state === "current" ? 2.5 : 1}
+                  strokeDasharray={state === "current" ? undefined : "3 4"}
+                  label={{
+                    value: formatClock(pour.startSec),
+                    position: "top",
+                    offset: 8,
+                    fontSize: 13,
+                    fill: POUR_COLOR[state].text,
+                    fontWeight: state === "current" ? 700 : 500,
+                  }}
+                />
+              );
+            })}
+
+            {/* 지금 부을 주수의 목표 물량까지 가로선. 초록 실선이 이 선에 닿으면 멈추면 됩니다. */}
+            {currentPour && (
+              <ReferenceLine
+                y={currentPour.gram}
+                stroke={AMBER}
+                strokeWidth={2}
+                strokeDasharray="6 4"
                 label={{
-                  value: `${pour.startSec}초`,
-                  // 시작점은 아래에 둡니다. 위에 두면 직전 주수의 물량 표시와 겹칩니다.
-                  position: "bottom",
-                  offset: 8,
-                  fontSize: 12,
-                  fill: brew.elapsedSec >= pour.startSec ? "#94a3b8" : "#475569",
-                }}
-              />,
-              <ReferenceDot
-                key={`end-${pour.sec}`}
-                x={pour.sec}
-                y={pour.gram}
-                r={4}
-                fill={brew.elapsedSec >= pour.sec ? "#cbd5e1" : "#0f172a"}
-                stroke="#fff"
-                strokeWidth={1.5}
-                label={{
-                  value: `${pour.gram} g`,
-                  position: "top",
-                  offset: 8,
+                  value: `${currentPour.gram} g`,
+                  position: "right",
+                  offset: 4,
                   fontSize: 14,
-                  fill: brew.elapsedSec >= pour.sec ? "#94a3b8" : "#0f172a",
-                  fontWeight: brew.elapsedSec >= pour.sec ? 400 : 700,
+                  fill: AMBER,
+                  fontWeight: 700,
                 }}
-              />,
-            ])}
+              />
+            )}
+
+            {/* 주수 끝점과 물량. 지금 주수는 위 가로선이 물량을 보여줘서 라벨을 겹쳐 달지 않습니다. */}
+            {targets.map((pour) => {
+              const state = pourState(pour);
+              return (
+                <ReferenceDot
+                  key={`end-${pour.index}`}
+                  x={pour.sec}
+                  y={pour.gram}
+                  r={state === "current" ? 6 : 4}
+                  fill={POUR_COLOR[state].dot}
+                  stroke="#fff"
+                  strokeWidth={1.5}
+                  label={
+                    state === "current"
+                      ? undefined
+                      : {
+                          value: `${pour.gram} g`,
+                          position: "top",
+                          offset: 8,
+                          fontSize: 14,
+                          fill: POUR_COLOR[state].text,
+                          fontWeight: state === "past" ? 400 : 700,
+                        }
+                  }
+                />
+              );
+            })}
 
             {/* 물이 다 빠지는 지점 — 추출이 끝나는 시각과 최종 물량.
                 주수 끝점과 같은 물량이라도, 여기까지가 한 잔이라는 것을 보여줍니다. */}
@@ -445,6 +510,34 @@ export default function BrewPage() {
             )}
           </LineChart>
         </ResponsiveContainer>
+
+        {/* 주수 시간표. 그래프 선은 모양을, 이 줄은 정확한 숫자를 맡습니다.
+            그래프에서 지금 주수를 주황으로 칠한 것과 같은 칸을 같은 색으로 맞춰 두 곳이 한 쌍으로 읽힙니다. */}
+        {recipe && targets.length > 0 && (
+          <ol className="mt-3 flex flex-wrap gap-1.5 text-sm">
+            {targets.map((pour) => {
+              const state = pourState(pour);
+              return (
+                <li
+                  key={pour.index}
+                  className={`rounded-md border px-2 py-1 tabular-nums ${POUR_CHIP[state]}`}
+                >
+                  <span className="mr-1 text-xs opacity-80">
+                    {state === "past" ? "✓ " : ""}
+                    {pour.index === 1 ? "뜸" : `${pour.index}차`}
+                  </span>
+                  {formatClock(pour.startSec)} → <b>{pour.gram} g</b>
+                </li>
+              );
+            })}
+            {finishPoint && (
+              <li className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 tabular-nums">
+                <span className="mr-1 text-xs">완성</span>
+                {formatClock(finishPoint.sec)}
+              </li>
+            )}
+          </ol>
+        )}
       </div>
 
       {/* 측정이 끊긴 뒤의 값은 어느 것도 믿을 수 없어 저장 버튼 자체를 두지 않습니다.
@@ -527,7 +620,7 @@ export default function BrewPage() {
         <div className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
           <div className="font-medium">기록 저장 완료 (#{saved.brewId})</div>
           <div className="mt-1">
-            {brew.sampleCount}개 측정 · {saved.durationSec}초 · 최종{" "}
+            {brew.sampleCount}개 측정 · {formatDuration(saved.durationSec)} · 최종{" "}
             {formatGram(saved.finalWeightG, 1)} g
             {saved.rmse !== null && ` · 정확도 ${saved.rmse.toFixed(1)} g`}
           </div>

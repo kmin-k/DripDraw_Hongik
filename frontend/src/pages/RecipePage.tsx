@@ -17,6 +17,7 @@ import {
   type RecipePreview,
   type RecipeRequest,
 } from "../lib/api";
+import { formatDuration } from "../lib/format";
 import { DRINK, PHASE, PROCESS, REGION, ROAST } from "../lib/labels";
 import { loadSettings } from "../lib/settings";
 import { CONFIDENCE_LABEL, GRIND_PHOTO_HINT, useGrindMeasure } from "../lib/useGrindMeasure";
@@ -349,7 +350,7 @@ export default function RecipePage() {
               { label: "물 온도", value: `${recipe.waterTempC} ℃` },
               { label: "총 물량", value: `${recipe.totalWaterG} g` },
               { label: "유량", value: `${recipe.flowRateGps} g/s` },
-              { label: "총 시간", value: `${recipe.targetCurve.at(-1)?.[0] ?? 0} 초` },
+              { label: "총 시간", value: formatDuration(recipe.targetCurve.at(-1)?.[0] ?? 0) },
             ].map((item) => (
               <div key={item.label} className="rounded border bg-white p-3">
                 <div className="text-xs text-slate-500">{item.label}</div>
@@ -400,8 +401,8 @@ export default function RecipePage() {
                   <tr key={pour.phase} className="border-t">
                     <td className="py-1 font-sans">{PHASE[pour.phase]}</td>
                     <td>{pour.waterG} g</td>
-                    <td>{pour.startSec}초</td>
-                    <td>{pour.endSec}초</td>
+                    <td>{formatDuration(pour.startSec)}</td>
+                    <td>{formatDuration(pour.endSec)}</td>
                   </tr>
                 ))}
               </tbody>

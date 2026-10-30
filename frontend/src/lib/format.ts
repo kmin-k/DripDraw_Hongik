@@ -24,6 +24,15 @@ export function formatGram(grams: number, digits = 0): string {
   return Number(text) === 0 ? (0).toFixed(digits) : text;
 }
 
+/**
+ * "1:10" — 그래프처럼 자리가 좁은 곳에 쓰는 시각. 저울 타이머 표시와 같은 형식입니다.
+ * 글로 쓰는 곳(카드·숫자 칸)은 formatDuration("1분 10초")을 씁니다.
+ */
+export function formatClock(totalSec: number): string {
+  const whole = Math.max(0, Math.round(totalSec));
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
+}
+
 /** "3분 25초" — 205초처럼 큰 초 단위는 한눈에 안 들어옵니다. */
 export function formatDuration(totalSec: number): string {
   const minutes = Math.floor(totalSec / 60);
