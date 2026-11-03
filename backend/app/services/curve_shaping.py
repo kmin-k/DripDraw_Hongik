@@ -13,6 +13,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from app.services.rmse import interpolate_at
+from app.services.rule_engine import round_half_up
 
 Curve = Sequence[Sequence[float]]
 
@@ -167,19 +168,20 @@ def shape_target_curve(curve: Curve) -> list[list[int]]:
     # 규칙 엔진에서 4차를 잔량으로 계산하는 것과 같은 이유입니다 (rule-table.md 8-3절).
     amounts[-1] += final_weight - sum(amounts)
 
+    # 반올림은 규칙 엔진과 같은 half-up입니다 (8-3절). 파이썬 round()는 2.5를 2로 내립니다.
     shaped: list[list[int]] = []
     cumulative = 0.0
     for pour, amount in zip(pours, amounts, strict=True):
-        shaped.append([round(pour.start_sec), round(cumulative)])
+        shaped.append([round_half_up(pour.start_sec), round_half_up(cumulative)])
         cumulative += amount
-        shaped.append([round(pour.end_sec), round(cumulative)])
+        shaped.append([round_half_up(pour.end_sec), round_half_up(cumulative)])
 
     # 첫 주수가 0초에 시작하지 않으면 원점을 앞에 붙입니다.
     if shaped[0][0] > 0:
         shaped.insert(0, [0, 0])
 
     # 마지막 주수 이후 물이 빠지는 구간. 실측이 끝난 시점까지 수평으로 잇습니다.
-    last_time = round(cleaned[-1][0])
+    last_time = round_half_up(cleaned[-1][0])
     if last_time > shaped[-1][0]:
         shaped.append([last_time, shaped[-1][1]])
 
