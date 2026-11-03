@@ -6,8 +6,11 @@
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.migrate import upgrade_to_head
@@ -39,6 +42,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """422 응답에서 받은 값(`input`)을 뺍니다.
+
+    FastAPI 기본 응답은 잘못 들어온 값을 그대로 되돌려주는데, NaN이면 JSON으로 만들 수 없어
+    422를 내려다 500이 납니다. 곡선 18,000점을 통째로 되돌려주는 낭비도 막습니다.
+    화면은 어느 칸이 왜 틀렸는지(`loc`·`msg`)만 씁니다.
+    """
+    errors = [{k: v for k, v in e.items() if k != "input"} for e in exc.errors()]
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        content={"detail": jsonable_encoder(errors)},
+    )
+
 
 app.include_router(beans.router)
 app.include_router(recipes.router)

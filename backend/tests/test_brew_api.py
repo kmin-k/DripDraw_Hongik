@@ -4,6 +4,8 @@
 프론트가 보낸 값을 그대로 저장하면 두 곳의 계산이 갈라졌을 때 알 수 없습니다.
 """
 
+from app.services.constants import MAX_CURVE_POINTS
+
 RECIPE_BODY = {
     "doseG": 20,
     "drinkType": "HOT",
@@ -80,6 +82,54 @@ def test_empty_curve_is_rejected(client):
 def test_malformed_curve_point_is_rejected(client):
     res = client.post("/api/brews", json={"actualCurve": [[0, 0, 0]], **TIMES})
     assert res.status_code == 422
+
+
+class TestCurveValidation:
+    """잘못된 곡선은 500이 아니라 422로 돌려보냅니다."""
+
+    def post(self, client, curve, **times):
+        return client.post("/api/brews", json={"actualCurve": curve, **TIMES, **times})
+
+    def test_nan_is_rejected(self, client):
+        # 표준 JSON에는 NaN이 없지만 파이썬·JS 직렬화기는 NaN 토큰을 내보낼 수 있습니다.
+        res = client.post(
+            "/api/brews",
+            content='{"actualCurve": [[0, 0], [1, NaN]], "startedAt": "2026-08-09T09:12:03Z",'
+            ' "endedAt": "2026-08-09T09:15:31Z"}',
+            headers={"Content-Type": "application/json"},
+        )
+        assert res.status_code == 422
+
+    def test_infinity_is_rejected(self, client):
+        res = client.post(
+            "/api/brews",
+            content='{"actualCurve": [[0, 0], [Infinity, 10]], "startedAt": "2026-08-09T09:12:03Z",'
+            ' "endedAt": "2026-08-09T09:15:31Z"}',
+            headers={"Content-Type": "application/json"},
+        )
+        assert res.status_code == 422
+
+    def test_negative_time_is_rejected(self, client):
+        assert self.post(client, [[-1, 0], [10, 50]]).status_code == 422
+
+    def test_time_going_backwards_is_rejected(self, client):
+        assert self.post(client, [[0, 0], [20, 80], [10, 90]]).status_code == 422
+
+    def test_repeated_time_is_allowed(self, client):
+        # 패킷 두 개가 같은 시각으로 찍힐 수 있습니다.
+        assert self.post(client, [[0, 0], [10, 50], [10, 51]]).status_code == 201
+
+    def test_small_negative_weight_is_allowed(self, client):
+        # 빈 저울은 -0.04 g 같은 값을 보냅니다.
+        assert self.post(client, [[0, -0.04], [10, 50]]).status_code == 201
+
+    def test_too_many_points_is_rejected(self, client):
+        curve = [[i * 0.1, 0] for i in range(MAX_CURVE_POINTS + 1)]
+        assert self.post(client, curve).status_code == 422
+
+    def test_end_before_start_is_rejected(self, client):
+        res = self.post(client, [[0, 0], [10, 50]], endedAt="2026-08-09T09:00:00Z")
+        assert res.status_code == 422
 
 
 def test_accepts_a_full_length_curve(client):

@@ -4,6 +4,7 @@ api.md는 계약 합의용 문서이고, 실제 기준은 이 파일입니다(Fa
 JSON은 camelCase, 파이썬은 snake_case로 두고 alias로 연결합니다.
 """
 
+import math
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Annotated, Self
@@ -189,13 +190,24 @@ class BrewCreate(CamelModel):
     started_at: UtcNaiveDateTime
     ended_at: UtcNaiveDateTime
     #: [[경과 시간(초), 누적 물량(g)], ...] — 다운샘플링하지 않은 원본
-    actual_curve: list[list[float]] = Field(min_length=1)
+    actual_curve: list[list[float]] = Field(min_length=1, max_length=C.MAX_CURVE_POINTS)
 
     @model_validator(mode="after")
     def check_curve_shape(self) -> Self:
+        # 여기서 거르지 않으면 NaN은 DB 저장 단계에서 터져 500이 되고,
+        # 시간이 거꾸로 가는 곡선은 RMSE(시간 오름차순 전제)를 조용히 틀리게 만듭니다.
+        previous_sec = 0.0
         for point in self.actual_curve:
             if len(point) != 2:
                 raise ValueError("actualCurve의 각 점은 [시간, 무게] 두 값이어야 합니다")
+            sec, gram = point
+            if not (math.isfinite(sec) and math.isfinite(gram)):
+                raise ValueError("actualCurve에 NaN이나 무한대가 있습니다")
+            if sec < previous_sec:
+                raise ValueError("actualCurve의 시간은 0 이상이고 줄어들지 않아야 합니다")
+            previous_sec = sec
+        if self.ended_at < self.started_at:
+            raise ValueError("endedAt이 startedAt보다 앞설 수 없습니다")
         return self
 
 
