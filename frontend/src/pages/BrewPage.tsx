@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   CartesianGrid,
@@ -14,12 +14,13 @@ import {
 
 import type { ScaleStatus } from "../ble/types";
 import { useScale } from "../ble/useScale";
+import DeleteButton from "../components/DeleteButton";
 import SaveAsRecipeForm from "../components/SaveAsRecipeForm";
 import { api, type BrewResult, type Recipe } from "../lib/api";
 import { formatClock, formatDuration, formatGram } from "../lib/format";
 import { brewEnd, nextPourTarget, pourTargets, type PourTarget } from "../lib/pours";
 import type { Curve } from "../lib/rmse";
-import { DROP_ABORT_G, useBrewSession } from "../lib/useBrewSession";
+import { useBrewSession } from "../lib/useBrewSession";
 
 /**
  * 데모 시나리오 3번 — 시연 성패를 가르는 화면.
@@ -134,13 +135,35 @@ export default function BrewPage() {
     void scale.resetTimer().then(() => scale.startTimer());
   };
 
-  // 측정이 끊기면(저울 영점 등) 저울 타이머도 멈춥니다. 화면은 멈췄는데 저울만 돌면 헷갈립니다.
-  const registerAbort = brew.onAbort;
+  /** 기록을 서버에 보냅니다. 정확도는 서버가 다시 계산한 값을 씁니다. */
+  const getRecord = brew.getRecord;
+  const recipeId = recipe?.recipeId;
+  const saveRecord = useCallback(async () => {
+    const record = getRecord();
+    if (!record) return;
+
+    setSaving(true);
+    setSaveError(null);
+    try {
+      setSaved(await api.saveBrew({ recipeId, ...record }));
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  }, [getRecord, recipeId]);
+
+  // 드리퍼를 들어 무게가 빠지면 추출이 저절로 끝납니다. 버튼으로 끝낸 것과 똑같이
+  // 저울 타이머를 멈추고 저장합니다 — 드리퍼를 든 손으로 화면을 누를 필요가 없습니다.
+  const registerDropEnd = brew.onDropEnd;
   const stopTimer = scale.stopTimer;
   useEffect(() => {
-    registerAbort(() => void stopTimer());
-    return () => registerAbort(null);
-  }, [registerAbort, stopTimer]);
+    registerDropEnd(() => {
+      void stopTimer();
+      void saveRecord();
+    });
+    return () => registerDropEnd(null);
+  }, [registerDropEnd, stopTimer, saveRecord]);
 
   // 아래 자동 시작 effect가 쓰는 값들. 훅 목록에 넣기 좋게 따로 꺼내 둡니다.
   const phaseNow = brew.phase;
@@ -167,22 +190,11 @@ export default function BrewPage() {
     }
   }, [scale.timerState, phaseNow, startSession]);
 
-  /** 종료와 동시에 저장합니다. 정확도는 서버가 다시 계산한 값을 씁니다. */
+  /** 종료와 동시에 저장합니다. */
   const finishAndSave = async () => {
     brew.finish();
     void scale.stopTimer();
-    const record = brew.getRecord();
-    if (!record) return;
-
-    setSaving(true);
-    setSaveError(null);
-    try {
-      setSaved(await api.saveBrew({ recipeId: recipe?.recipeId, ...record }));
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSaving(false);
-    }
+    await saveRecord();
   };
 
   const restart = () => {
@@ -206,7 +218,6 @@ export default function BrewPage() {
   const running = brew.phase === "RUNNING";
   const paused = brew.phase === "PAUSED";
   const finished = brew.phase === "FINISHED";
-  const aborted = brew.phase === "ABORTED";
 
   // 그래프와 시간표가 같은 기준으로 칠하도록 주수의 상태를 한 곳에서 정합니다.
   // 추출 전·후에는 "지금"이 없으므로 강조하지 않습니다.
@@ -540,15 +551,26 @@ export default function BrewPage() {
         )}
       </div>
 
-      {/* 측정이 끊긴 뒤의 값은 어느 것도 믿을 수 없어 저장 버튼 자체를 두지 않습니다.
-          "고쳐서 이어가는" 척하면 기록이 오염되는데 화면은 멀쩡해 보여 더 위험합니다. */}
-      {aborted && (
-        <div className="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-          <div className="font-medium">저울 영점이 눌려 측정이 끊겼습니다</div>
-          <div className="mt-1 text-red-700">
-            무게가 갑자기 {DROP_ABORT_G} g 넘게 떨어졌습니다. 추출 중에는 저울의 영점 버튼을
-            누르거나 드리퍼를 들어올리면 안 됩니다. 이 추출은 저장할 수 없습니다.
+      {/* 드리퍼를 든 것인지 영점을 잘못 누른 것인지 앱은 구분할 수 없습니다. 둘 다 그 전까지는
+          온전한 기록이라 저장해 두고, 실수였다면 지울 수 있게 합니다. */}
+      {finished && brew.endedByDrop && (
+        <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <div className="font-medium">무게가 크게 줄어 여기서 추출을 끝냈습니다</div>
+          <div className="mt-1 text-amber-800">
+            드리퍼를 들기 직전까지 기록했습니다. 추출 도중 저울 영점을 잘못 누른 경우라면 이 기록을
+            지우고 다시 내려 주세요.
           </div>
+          {saved && (
+            <DeleteButton
+              className="mt-2 inline-block"
+              label="이 기록 지우기"
+              warning="맛 평가 전이라 기록만 지워집니다."
+              onConfirm={async () => {
+                await api.deleteBrew(saved.brewId);
+                restart();
+              }}
+            />
+          )}
         </div>
       )}
 

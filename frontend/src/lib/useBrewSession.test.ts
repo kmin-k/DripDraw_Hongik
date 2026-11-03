@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { CurvePoint } from "./rmse";
-import { DROP_ABORT_G, downsample, isMeasurementBroken, toSample } from "./useBrewSession";
+import { DROP_END_G, downsample, isWeightDropped, toSample, trimDropTail } from "./useBrewSession";
 
 describe("toSample — 저울 패킷을 곡선 위의 점으로", () => {
   const START = 10_000; // performance.now 기준 시작 시각
@@ -88,31 +88,62 @@ describe("downsample — 화면용 솎아내기", () => {
   });
 });
 
-describe("isMeasurementBroken — 저울 영점·드리퍼 들어올림 감지", () => {
+describe("isWeightDropped — 드리퍼 들어올림·저울 영점 감지", () => {
   it("첫 패킷은 비교 대상이 없어 판단하지 않는다", () => {
-    expect(isMeasurementBroken(null, 0)).toBe(false);
+    expect(isWeightDropped(null, 0)).toBe(false);
   });
 
-  it("★ 영점을 누르면 무게가 통째로 사라진다", () => {
-    // 드리퍼 350 g + 물 120 g = 470 g에서 영점 → 다음 패킷은 0 근처.
-    expect(isMeasurementBroken(470, 0.3)).toBe(true);
+  it("★ 드리퍼를 들면 무게가 통째로 빠진다", () => {
+    // 드리퍼 350 g + 물 300 g = 650 g에서 들어올림 → 저울에는 서버만 남습니다.
+    expect(isWeightDropped(650, 200)).toBe(true);
   });
 
-  it("드리퍼를 들어올려도 같은 이유로 끊는다", () => {
-    expect(isMeasurementBroken(470, 200)).toBe(true);
+  it("영점을 눌러도 같은 이유로 끝낸다", () => {
+    expect(isWeightDropped(470, 0.3)).toBe(true);
   });
 
   it("저울 진동 정도의 흔들림은 넘어간다", () => {
     // 주전자를 올려놓거나 손이 닿으면 ±1~2 g 정도 흔들립니다.
-    expect(isMeasurementBroken(470, 468.5)).toBe(false);
+    expect(isWeightDropped(470, 468.5)).toBe(false);
   });
 
-  it("문턱 바로 아래는 통과, 문턱부터 단절", () => {
-    expect(isMeasurementBroken(100, 100 - DROP_ABORT_G + 0.1)).toBe(false);
-    expect(isMeasurementBroken(100, 100 - DROP_ABORT_G)).toBe(true);
+  it("문턱 바로 아래는 통과, 문턱부터 종료", () => {
+    expect(isWeightDropped(100, 100 - DROP_END_G + 0.1)).toBe(false);
+    expect(isWeightDropped(100, 100 - DROP_END_G)).toBe(true);
   });
 
   it("무게가 늘어나는 것은 언제나 정상이다", () => {
-    expect(isMeasurementBroken(100, 400)).toBe(false);
+    expect(isWeightDropped(100, 400)).toBe(false);
+  });
+});
+
+describe("trimDropTail — 들어올리는 동안의 내리막 제거", () => {
+  it("★ 최고점 뒤로 꺾여 내려간 점을 버린다", () => {
+    // 300 g에서 천천히 들어올려 280·255까지 기록된 뒤 감지된 경우
+    const samples: CurvePoint[] = [
+      [0, 0],
+      [100, 299.5],
+      [150, 300],
+      [150.1, 280],
+      [150.2, 255],
+    ];
+    expect(trimDropTail(samples, 300)).toEqual([
+      [0, 0],
+      [100, 299.5],
+      [150, 300],
+    ]);
+  });
+
+  it("물이 빠지는 동안의 작은 흔들림은 남긴다", () => {
+    const samples: CurvePoint[] = [
+      [0, 0],
+      [150, 300],
+      [160, 298.2],
+    ];
+    expect(trimDropTail(samples, 300)).toEqual(samples);
+  });
+
+  it("원점은 항상 남는다", () => {
+    expect(trimDropTail([[0, 0]], 300)).toEqual([[0, 0]]);
   });
 });

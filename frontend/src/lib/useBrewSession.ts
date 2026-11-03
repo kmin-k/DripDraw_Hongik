@@ -15,21 +15,39 @@ import { createRmseAccumulator, interpolateAt, type Curve, type CurvePoint } fro
  *   빼지 않으면 곡선이 통째로 위로 밀립니다.
  */
 
-/** ABORTED — 측정이 끊겨 저장할 수 없는 상태. "다시 하기"만 남습니다. */
-export type BrewPhase = "IDLE" | "RUNNING" | "PAUSED" | "FINISHED" | "ABORTED";
+export type BrewPhase = "IDLE" | "RUNNING" | "PAUSED" | "FINISHED";
 
 /**
- * 한 패킷 사이에 무게가 이만큼 떨어지면 측정이 끊긴 것으로 봅니다 (g).
+ * 지금까지의 최고 무게보다 이만큼 떨어지면 추출이 끝난 것으로 봅니다 (g).
  *
- * 부은 물은 줄지 않으므로 큰 하락은 둘 중 하나입니다 — 저울 본체의 영점 버튼을 눌렀거나,
- * 드리퍼를 들어올렸거나. 둘 다 기준 무게를 잃어 그 뒤 값은 믿을 수 없습니다.
+ * 부은 물은 줄지 않으므로 큰 하락은 드리퍼를 들어올렸거나 저울 영점을 누른 것입니다.
+ * 둘 다 기준 무게를 잃어 **그 뒤** 값은 믿을 수 없지만, 그 전까지는 온전한 기록입니다.
+ * 드리퍼를 드는 건 보통 추출을 마쳤다는 뜻이라 거기서 끝내고 저장합니다.
+ *
+ * 직전 패킷이 아니라 최고 무게와 비교합니다. 천천히 들어올리면 한 패킷 사이 하락은 작아서
+ * 직전 값과 비교하면 끝까지 못 잡고 곡선이 바닥까지 끌려 내려갑니다.
  * 저울 진동은 ±1 g 안이라 30 g이면 넉넉히 구분됩니다.
  */
-export const DROP_ABORT_G = 30;
+export const DROP_END_G = 30;
 
-/** 직전 무게 대비 이번 무게가 측정 단절인지. 첫 패킷(previous가 없음)은 판단하지 않습니다. */
-export function isMeasurementBroken(previousG: number | null, currentG: number): boolean {
-  return previousG !== null && previousG - currentG >= DROP_ABORT_G;
+/** 들어올리는 동안 쌓인 꼬리를 잘라낼 기준 (g). 물 줄기가 끊길 때의 흔들림보다 크게 잡습니다. */
+const TAIL_TRIM_G = 5;
+
+/** 최고 무게 대비 이번 무게가 크게 떨어졌는지. 첫 패킷(peak가 없음)은 판단하지 않습니다. */
+export function isWeightDropped(peakG: number | null, currentG: number): boolean {
+  return peakG !== null && peakG - currentG >= DROP_END_G;
+}
+
+/**
+ * 드리퍼를 들어올리는 동안 기록된 내리막을 잘라냅니다.
+ *
+ * 감지 문턱(30 g)에 닿기 전 패킷 몇 개는 이미 곡선에 들어가 있어, 두면 끝이 아래로 꺾입니다.
+ * 최고 무게보다 TAIL_TRIM_G 넘게 낮은 끝 점들을 버립니다. 원점은 항상 남깁니다.
+ */
+export function trimDropTail(samples: CurvePoint[], peakPouredG: number): CurvePoint[] {
+  let end = samples.length;
+  while (end > 1 && samples[end - 1][1] < peakPouredG - TAIL_TRIM_G) end--;
+  return samples.slice(0, end);
 }
 
 /** 그래프 갱신 주기(ms). 숫자 표시는 매 패킷, 그래프만 묶어서 그립니다. */
@@ -94,6 +112,8 @@ export function useBrewSession(source: ScaleSource, target: Curve) {
   });
   // CHART_INTERVAL_MS마다 갱신 — 그리기 비용이 큰 쪽.
   const [chartSamples, setChartSamples] = useState<CurvePoint[]>([]);
+  /** 무게가 크게 빠져 저절로 끝났는지. 화면이 그 사실을 알려야 합니다. */
+  const [endedByDrop, setEndedByDrop] = useState(false);
 
   const phaseRef = useRef<BrewPhase>("IDLE");
   const samplesRef = useRef<CurvePoint[]>([]);
@@ -106,10 +126,10 @@ export function useBrewSession(source: ScaleSource, target: Curve) {
   const endedAtIsoRef = useRef<string | null>(null);
   /** 시작 직후 첫 패킷의 무게. 이후 모든 무게에서 뺍니다. */
   const baselineRef = useRef<number | null>(null);
-  /** 직전 패킷의 원본 무게(기준을 빼기 전). 급락 감지용. */
-  const lastRawGRef = useRef<number | null>(null);
-  /** 측정이 끊겼을 때 화면이 할 일(저울 타이머 정지 등). 패킷 콜백 안에서 부르므로 ref로 둡니다. */
-  const onAbortRef = useRef<(() => void) | null>(null);
+  /** 지금까지의 최고 원본 무게(기준을 빼기 전). 급락 감지용. */
+  const peakRawGRef = useRef<number | null>(null);
+  /** 저절로 끝났을 때 화면이 할 일(저울 타이머 정지·저장). 패킷 콜백 안에서 부르므로 ref로 둡니다. */
+  const onDropEndRef = useRef<(() => void) | null>(null);
   const chartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const changePhase = useCallback((next: BrewPhase) => {
@@ -132,6 +152,31 @@ export function useBrewSession(source: ScaleSource, target: Curve) {
     chartTimerRef.current = setTimeout(flushChart, CHART_INTERVAL_MS);
   }, [flushChart]);
 
+  /** 무게가 크게 빠졌을 때 — 내리막 꼬리를 잘라내고 거기서 끝냅니다. */
+  const endByDrop = useCallback(
+    (peakPouredG: number) => {
+      const kept = trimDropTail(samplesRef.current, peakPouredG);
+      samplesRef.current = kept;
+      // 잘라낸 점이 이미 정확도에 들어가 있으니 남은 점으로 다시 셉니다. 2,000점 안팎이라 가볍습니다.
+      accRef.current.reset();
+      for (const [sec, gram] of kept) accRef.current.add(sec, gram);
+
+      const [elapsedSec, poured] = kept[kept.length - 1];
+      setLive({
+        elapsedSec,
+        weightG: poured,
+        rmse: accRef.current.value,
+        sampleCount: kept.length,
+      });
+      endedAtIsoRef.current = new Date().toISOString();
+      setEndedByDrop(true);
+      changePhase("FINISHED");
+      flushChart();
+      onDropEndRef.current?.();
+    },
+    [changePhase, flushChart],
+  );
+
   // 저울 패킷을 직접 구독합니다. state를 거치면 배칭 과정에서 패킷이 유실될 수 있습니다.
   useEffect(() => {
     return source.onWeight((grams, timestampMs) => {
@@ -139,16 +184,16 @@ export function useBrewSession(source: ScaleSource, target: Curve) {
 
       if (baselineRef.current === null) baselineRef.current = grams;
 
-      // 영점이 눌리면 저울은 0 근처를 보내고, 기준을 빼면 큰 음수가 됩니다. 이어갈 수 없으니
-      // 여기서 끊습니다. 자동으로 기준을 다시 잡지 않습니다 — 그러면 곡선이 그 시점부터
-      // 통째로 밀려 정확도가 뜻을 잃는데, 화면은 멀쩡해 보여 더 위험합니다.
-      if (isMeasurementBroken(lastRawGRef.current, grams)) {
-        lastRawGRef.current = null;
-        changePhase("ABORTED");
-        onAbortRef.current?.();
+      // 드리퍼를 들거나 영점을 누르면 기준 무게를 잃습니다. 그 전까지만 기록으로 남기고
+      // 여기서 끝냅니다. 자동으로 기준을 다시 잡아 이어가지 않습니다 — 그러면 곡선이 그
+      // 시점부터 통째로 밀려 정확도가 뜻을 잃는데, 화면은 멀쩡해 보여 더 위험합니다.
+      if (isWeightDropped(peakRawGRef.current, grams)) {
+        const peakPoured = (peakRawGRef.current ?? grams) - baselineRef.current;
+        peakRawGRef.current = null;
+        endByDrop(peakPoured);
         return;
       }
-      lastRawGRef.current = grams;
+      peakRawGRef.current = Math.max(peakRawGRef.current ?? grams, grams);
 
       const sample = toSample(grams, timestampMs, {
         baselineG: baselineRef.current,
@@ -169,7 +214,7 @@ export function useBrewSession(source: ScaleSource, target: Curve) {
       });
       scheduleChart();
     });
-  }, [source, scheduleChart, changePhase]);
+  }, [source, scheduleChart, endByDrop]);
 
   useEffect(() => {
     return () => {
@@ -186,7 +231,8 @@ export function useBrewSession(source: ScaleSource, target: Curve) {
     accRef.current.reset();
     accRef.current.add(0, 0);
     baselineRef.current = null;
-    lastRawGRef.current = null;
+    peakRawGRef.current = null;
+    setEndedByDrop(false);
     startedAtMsRef.current = performance.now();
     startedAtIsoRef.current = new Date().toISOString();
     endedAtIsoRef.current = null;
@@ -219,16 +265,17 @@ export function useBrewSession(source: ScaleSource, target: Curve) {
     samplesRef.current = [];
     accRef.current.reset();
     baselineRef.current = null;
-    lastRawGRef.current = null;
+    peakRawGRef.current = null;
+    setEndedByDrop(false);
     pausedTotalMsRef.current = 0;
     setLive({ elapsedSec: 0, weightG: 0, rmse: null, sampleCount: 0 });
     setChartSamples([]);
     changePhase("IDLE");
   }, [changePhase]);
 
-  /** 측정이 끊겼을 때 부를 콜백을 등록합니다. 화면이 저울 타이머를 멈추는 데 씁니다. */
-  const onAbort = useCallback((callback: (() => void) | null) => {
-    onAbortRef.current = callback;
+  /** 무게가 빠져 저절로 끝났을 때 부를 콜백을 등록합니다. 화면이 타이머를 멈추고 저장하는 데 씁니다. */
+  const onDropEnd = useCallback((callback: (() => void) | null) => {
+    onDropEndRef.current = callback;
   }, []);
 
   /** 저장용 원본. 호출 시점에 읽으므로 렌더 중 ref 접근이 아닙니다. */
@@ -266,7 +313,8 @@ export function useBrewSession(source: ScaleSource, target: Curve) {
     getSamples,
     getRecord,
     hasTarget: target.length > 0,
-    onAbort,
+    endedByDrop,
+    onDropEnd,
     start,
     pause,
     resume,
