@@ -4,11 +4,11 @@ api.md는 계약 합의용 문서이고, 실제 기준은 이 파일입니다(Fa
 JSON은 camelCase, 파이썬은 snake_case로 두고 alias로 연결합니다.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Self
+from typing import Annotated, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
 
 from app.services import constants as C
@@ -37,6 +37,23 @@ class DrinkType(StrEnum):
     ICE = "ICE"
 
 
+def _attach_utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+def _to_naive_utc(value: datetime) -> datetime:
+    return _attach_utc(value).replace(tzinfo=None)
+
+
+#: 응답용 시각. DB 컬럼에 시간대가 없어 읽으면 naive인데, 그대로 내보내면 "Z"가 빠져
+#: 브라우저가 한국 시각으로 읽고 9시간 일찍 보입니다. 저장값은 UTC이므로 UTC를 붙입니다.
+UtcDateTime = Annotated[datetime, AfterValidator(_attach_utc)]
+
+#: 요청용 시각. 어느 시간대로 보내든 UTC로 바꾼 뒤 시간대를 떼어 저장합니다.
+#: 시간대 없이 오면 UTC로 봅니다.
+UtcNaiveDateTime = Annotated[datetime, AfterValidator(_to_naive_utc)]
+
+
 class CamelModel(BaseModel):
     model_config = ConfigDict(
         alias_generator=to_camel,
@@ -62,7 +79,7 @@ class BeanOut(CamelModel):
     process: Process
     roast_level: RoastLevel
     memo: str | None
-    created_at: datetime
+    created_at: UtcDateTime
 
 
 class BeanList(CamelModel):
@@ -146,12 +163,12 @@ class RecipeListItem(CamelModel):
     dose_g: int
     drink_type: DrinkType
     total_water_g: int
-    created_at: datetime
+    created_at: UtcDateTime
     #: 이 레시피로 내린 횟수. 0이면 만들어만 두고 쓰지 않은 레시피입니다.
     brew_count: int
     #: 가장 최근 추출의 정확도. 한 번도 안 내렸으면 null.
     last_rmse: float | None
-    last_brewed_at: datetime | None
+    last_brewed_at: UtcDateTime | None
 
 
 class RecipeList(CamelModel):
@@ -169,8 +186,8 @@ class BrewCreate(CamelModel):
 
     #: 자유 모드는 따라간 목표가 없어 null입니다.
     recipe_id: int | None = None
-    started_at: datetime
-    ended_at: datetime
+    started_at: UtcNaiveDateTime
+    ended_at: UtcNaiveDateTime
     #: [[경과 시간(초), 누적 물량(g)], ...] — 다운샘플링하지 않은 원본
     actual_curve: list[list[float]] = Field(min_length=1)
 
@@ -198,7 +215,7 @@ class BrewListItem(CamelModel):
     """
 
     brew_id: int
-    brewed_at: datetime
+    brewed_at: UtcDateTime
     #: 자유 모드는 비교할 목표가 없어 null입니다. 0과 다릅니다.
     rmse: float | None
     duration_sec: int
@@ -235,7 +252,7 @@ class BrewDetail(CamelModel):
     """추출 하나의 전부. 곡선을 다시 그리고 여기서 바로 다시 내릴 수 있어야 합니다."""
 
     brew_id: int
-    brewed_at: datetime
+    brewed_at: UtcDateTime
     rmse: float | None
     duration_sec: int
     final_weight_g: float
