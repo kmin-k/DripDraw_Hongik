@@ -39,9 +39,13 @@ def _brews_with_beans_and_feedback(client, count: int) -> None:
 
 
 def _queries_for(client, path: str) -> int:
+    return len(_statements_for(client, path))
+
+
+def _statements_for(client, path: str) -> list[str]:
     with count_queries() as queries:
         assert client.get(path).status_code == 200
-    return len(queries)
+    return queries
 
 
 class TestBrewList:
@@ -71,3 +75,17 @@ class TestRecipeList:
         many = _queries_for(client, "/api/recipes")
 
         assert many == few
+
+
+class TestListsSkipCurves:
+    """목록은 실측 곡선(건당 약 45 KB)을 DB에서 읽지도 않아야 합니다. 응답에 없는 값입니다."""
+
+    def test_brew_list(self, client):
+        _brews_with_beans_and_feedback(client, 2)
+        statements = _statements_for(client, "/api/brews")
+        assert not any("actual_curve" in s for s in statements)
+
+    def test_recipe_list(self, client):
+        _brews_with_beans_and_feedback(client, 2)
+        statements = _statements_for(client, "/api/recipes")
+        assert not any("actual_curve" in s for s in statements)

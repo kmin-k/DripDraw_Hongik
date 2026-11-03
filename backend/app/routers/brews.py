@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, update
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, defer, selectinload
 
 from app.database import get_db
 from app.models import Bean, Brew, Recipe
@@ -83,9 +83,12 @@ def list_brews(db: DbSession, limit: Annotated[int, Query(ge=1, le=200)] = 50) -
     # 둘이 어긋날 때 목록이 뒤죽박죽으로 보입니다. id는 같은 시각일 때의 기준입니다.
     # 항목마다 레시피·원두·평가를 따로 물으면 50건에 151번 묻습니다 (N+1).
     # 관계마다 한꺼번에 가져와 항목 수와 무관하게 4번으로 끝냅니다 (tests/test_query_count.py).
+    # 응답에 없는 실측 곡선은 DB에서도 읽지 않습니다. 실수로 꺼내 쓰면 조용히 다시 묻지 않고
+    # 오류가 나도록(raiseload) 막아 둡니다.
     brews = db.scalars(
         select(Brew)
         .options(
+            defer(Brew.actual_curve, raiseload=True),
             selectinload(Brew.recipe).selectinload(Recipe.bean),
             selectinload(Brew.feedback),
         )

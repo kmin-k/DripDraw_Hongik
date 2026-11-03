@@ -10,6 +10,7 @@
 """
 
 from dataclasses import asdict
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -148,11 +149,15 @@ def list_recipes(db: DbSession) -> RecipeList:
             .group_by(Brew.recipe_id)
         ).all()
     )
-    latest: dict[int, Brew] = {}
-    for brew in db.scalars(
-        select(Brew).where(Brew.recipe_id.is_not(None)).order_by(Brew.started_at.desc())
+    # 레시피별 최근 기록의 정확도·시각만 필요합니다. 기록 전체를 읽으면 건당 약 45 KB인
+    # 실측 곡선까지 딸려 와, 기록 100건이면 요청 한 번에 4.5 MB를 읽습니다.
+    latest: dict[int, tuple[float | None, datetime]] = {}
+    for recipe_id, rmse, started_at in db.execute(
+        select(Brew.recipe_id, Brew.rmse, Brew.started_at)
+        .where(Brew.recipe_id.is_not(None))
+        .order_by(Brew.started_at.desc())
     ):
-        latest.setdefault(brew.recipe_id, brew)
+        latest.setdefault(recipe_id, (rmse, started_at))
 
     # 원두 이름을 레시피마다 따로 묻지 않습니다 (N+1).
     recipes = db.scalars(
@@ -173,8 +178,8 @@ def list_recipes(db: DbSession) -> RecipeList:
                 total_water_g=int(recipe.total_water_g),
                 created_at=recipe.created_at,
                 brew_count=stats.get(recipe.id, 0),
-                last_rmse=last.rmse if last else None,
-                last_brewed_at=last.started_at if last else None,
+                last_rmse=last[0] if last else None,
+                last_brewed_at=last[1] if last else None,
             )
         )
     return RecipeList(items=items)
