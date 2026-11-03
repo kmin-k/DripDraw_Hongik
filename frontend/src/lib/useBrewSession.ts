@@ -137,8 +137,13 @@ export function useBrewSession(source: ScaleSource, target: Curve) {
     setPhase(next);
   }, []);
 
-  // 목표가 바뀌면 누적기도 새 목표로 갈아끼웁니다.
+  // 목표가 바뀌면 누적기도 새 목표로 갈아끼웁니다. 단 추출 중에는 바꾸지 않습니다 —
+  // 바꾸면 그때까지 쌓은 정확도가 사라지고 앞부분은 옛 목표, 뒷부분은 새 목표로 계산됩니다.
+  // 새 목표는 다음 시작(start) 때 적용됩니다.
+  const targetRef = useRef(target);
   useEffect(() => {
+    targetRef.current = target;
+    if (phaseRef.current === "RUNNING" || phaseRef.current === "PAUSED") return;
     accRef.current = createRmseAccumulator(target);
   }, [target]);
 
@@ -228,7 +233,7 @@ export function useBrewSession(source: ScaleSource, target: Curve) {
     // 심지 않으면 목표는 (0,0)에서 시작하는데 실측만 뒤에서 시작해 곡선이 어긋나 보이고,
     // 그 빈 구간이 정확도 계산에서도 빠집니다.
     samplesRef.current = [[0, 0]];
-    accRef.current.reset();
+    accRef.current = createRmseAccumulator(targetRef.current);
     accRef.current.add(0, 0);
     baselineRef.current = null;
     peakRawGRef.current = null;
