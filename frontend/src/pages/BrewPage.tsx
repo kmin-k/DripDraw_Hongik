@@ -21,6 +21,7 @@ import { formatClock, formatDuration, formatGram } from "../lib/format";
 import { brewEnd, nextPourTarget, pourTargets, type PourTarget } from "../lib/pours";
 import type { Curve } from "../lib/rmse";
 import { useBrewSession } from "../lib/useBrewSession";
+import { isRecordAtRisk, useLeaveWarning } from "../lib/useLeaveWarning";
 import { useWakeLock } from "../lib/useWakeLock";
 
 /**
@@ -118,6 +119,7 @@ export default function BrewPage() {
   const [saved, setSaved] = useState<BrewResult | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  useLeaveWarning(isRecordAtRisk(brew.phase, saving, saveError !== null));
 
   // 마음에 든 추출을 다음 목표로 저장하는 흐름. 폼 자체는 SaveAsRecipeForm에 있습니다.
   const [saveFormOpen, setSaveFormOpen] = useState(false);
@@ -727,9 +729,16 @@ export default function BrewPage() {
       )}
 
       {finished && saveError && (
-        <p className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          기록 저장 실패 — {saveError}
-        </p>
+        <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <div className="font-medium">기록 저장 실패 — {saveError}</div>
+          <div className="mt-1">
+            측정한 기록은 아직 이 화면에 남아 있습니다. 화면을 벗어나면 사라지니 네트워크를 확인하고
+            다시 저장해 주세요.
+          </div>
+          <button onClick={saveRecord} className={`${btn} mt-2 bg-white`}>
+            다시 저장
+          </button>
+        </div>
       )}
 
       {scale.error && (
