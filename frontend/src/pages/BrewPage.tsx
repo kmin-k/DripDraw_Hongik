@@ -21,6 +21,7 @@ import { formatClock, formatDuration, formatGram } from "../lib/format";
 import { brewEnd, nextPourTarget, pourTargets, type PourTarget } from "../lib/pours";
 import type { Curve } from "../lib/rmse";
 import { useBrewSession } from "../lib/useBrewSession";
+import { useWakeLock } from "../lib/useWakeLock";
 
 /**
  * 데모 시나리오 3번 — 시연 성패를 가르는 화면.
@@ -112,6 +113,7 @@ export default function BrewPage() {
 
   const scale = useScale();
   const brew = useBrewSession(scale.source, target);
+  useWakeLock(brew.phase === "RUNNING" || brew.phase === "PAUSED");
 
   const [saved, setSaved] = useState<BrewResult | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
