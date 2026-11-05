@@ -53,6 +53,9 @@ function formatError(body: unknown, res: Response): string {
       })
       .join(", ");
   }
+  // 아래 둘은 백엔드가 아니라 Caddy가 본문 없이 돌려줍니다 (deploy/Caddyfile).
+  if (res.status === 401) return "비밀번호가 맞지 않거나 입력을 취소했습니다.";
+  if (res.status === 413) return "파일이 너무 큽니다. 25 MB 이하로 줄여 주세요.";
   return `${res.status} ${res.statusText}`;
 }
 
