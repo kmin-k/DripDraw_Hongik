@@ -5,9 +5,36 @@
 #   배포       dripdraw.store   → HTTPS 인증서를 자동으로 받고 갱신합니다
 #
 # Web Bluetooth는 HTTPS(또는 localhost)에서만 동작합니다. 배포에서 HTTPS가 선택이 아닌 이유입니다.
+#
+# ADMIN_PASSWORD_HASH
+#   삭제와 API 문서에 거는 비밀번호의 해시. 만드는 법은 docs/deploy.md "관리자 비밀번호".
 
 {$SITE_ADDRESS} {
 	encode zstd gzip
+
+	# 공개 사이트라 데이터를 지우는 요청과 API 문서에만 비밀번호를 겁니다.
+	# 추출과 기록 저장은 비밀번호 없이 그대로 씁니다.
+	@delete method DELETE
+	basic_auth @delete {
+		admin {$ADMIN_PASSWORD_HASH}
+	}
+
+	@apiDocs path /docs /openapi.json
+	basic_auth @apiDocs {
+		admin {$ADMIN_PASSWORD_HASH}
+	}
+
+	# 백엔드에 닿기 전에 본문 크기를 막습니다. 백엔드의 25 MB 검사는 전부 읽은 뒤에야 동작합니다.
+	# 분쇄도 사진은 multipart 여백을 더한 26 MB, 나머지는 최대 곡선(18,000점)이 넉넉히 들어가는 1 MB.
+	@upload path /api/vision/*
+	request_body @upload {
+		max_size 26MB
+	}
+
+	@notUpload not path /api/vision/*
+	request_body @notUpload {
+		max_size 1MB
+	}
 
 	# API와 문서는 백엔드로. 개발 서버에서는 Vite가 하던 일입니다.
 	# 화면과 API가 같은 주소라 CORS 설정이 필요 없습니다.

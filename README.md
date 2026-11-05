@@ -154,7 +154,7 @@ copy .env.example .env
 docker compose up -d --build
 ```
 
-`.env`의 `DB_PASSWORD`를 채운 뒤 실행합니다.
+`.env`의 `DB_PASSWORD`와 `ADMIN_PASSWORD_HASH`를 채운 뒤 실행합니다.
 
 ## 개발 규칙
 

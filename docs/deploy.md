@@ -31,7 +31,7 @@
 AWS에 올리기 전에 이 구성을 노트북에서 확인합니다. Docker Desktop이 켜져 있어야 합니다.
 
 ```bash
-copy .env.example .env        # DB_PASSWORD 채우기 (영문·숫자만)
+copy .env.example .env        # DB_PASSWORD(영문·숫자만)와 ADMIN_PASSWORD_HASH 채우기
 docker compose up -d --build
 docker compose exec backend python -m app.seed
 ```
@@ -108,12 +108,38 @@ git clone https://github.com/kmin-k/DripDraw_Hongik.git
 cd DripDraw_Hongik && git switch dev
 echo "DB_PASSWORD=$(openssl rand -hex 16)" > .env
 echo "SITE_ADDRESS=dripdraw.store, www.dripdraw.store" >> .env
+# 아래 "관리자 비밀번호"대로 ADMIN_PASSWORD_HASH를 .env에 추가한 뒤
 
 docker compose up -d --build
 ```
 
 DB 비밀번호는 서버의 `.env`에만 있고 사람이 칠 일이 없습니다. **`.env`를 지우거나 바꾸면 backend가
 DB에 못 들어갑니다** — DB는 처음 켜질 때 정한 비밀번호를 기억합니다.
+
+### 관리자 비밀번호
+
+사이트에 로그인은 없습니다. **삭제 요청과 API 문서(`/docs`)에만** Caddy가 비밀번호를 묻습니다.
+앱에서 삭제를 누르면 브라우저 창이 뜨고, 사용자 이름은 `admin`입니다. 입력하면 브라우저를 닫기 전까지 다시 묻지 않습니다.
+추출과 기록 저장에는 비밀번호가 없으므로 누구나 기록을 추가할 수는 있습니다.
+
+서버에서 해시를 만들어 `.env`에 넣습니다. 비밀번호 원문은 서버와 레포 어디에도 남기지 않습니다.
+
+```bash
+docker run --rm -it caddy:2-alpine caddy hash-password
+nano .env
+```
+
+`.env`에 아래 한 줄을 추가합니다. 해시의 `$`가 변수로 읽히지 않도록 **작은따옴표가 필수**입니다.
+
+```text
+ADMIN_PASSWORD_HASH='출력된 해시'
+```
+
+**Caddy 설정을 고친 뒤에는 켜기 전에 검사합니다.** 설정이 틀린 채로 켜면 사이트 전체가 내려갑니다.
+
+```bash
+docker compose run --rm --no-deps web caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+```
 
 ### 평소 운영
 
