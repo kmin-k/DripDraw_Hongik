@@ -140,7 +140,7 @@ alembic upgrade head
 **서버 DB는 지우지 않습니다.** 예전에는 모델을 바꾸면 `dripdraw.db`를 지웠지만, 배포 서버의 실제 기록은
 지울 수 없어서 바꾼 부분만 적용하는 방식으로 옮겼습니다.
 
-배포용 PostgreSQL에서도 통과하는지 확인하려면 (Docker 필요):
+CI는 SQLite와 PostgreSQL 양쪽에서 테스트를 돌립니다. 배포용 PostgreSQL에서 통과하는지 올리기 전에 확인하려면 (Docker 필요):
 
 ```bash
 docker run -d --name dripdraw-pg-test -e POSTGRES_PASSWORD=test -p 5433:5432 postgres:17-alpine

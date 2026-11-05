@@ -46,6 +46,45 @@ jobs:
       - name: pytest
         run: pytest -q
 
+  # 배포 DB와 같은 PostgreSQL에서 테스트를 한 번 더 돌립니다.
+  # SQLite에서만 통과하는 쿼리와 마이그레이션을 배포 전에 잡기 위해서입니다.
+  backend-postgres:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      postgres:
+        # docker-compose.yml의 db 이미지와 맞춥니다.
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: 의존성 설치
+        run: pip install -r requirements-dev.txt
+
+      - name: pytest (PostgreSQL)
+        run: pytest -q
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://postgres:test@localhost:5432/postgres
+
   frontend:
     runs-on: ubuntu-latest
     defaults:
