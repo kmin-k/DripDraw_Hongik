@@ -21,9 +21,10 @@ import numpy as np
 
 
 def _save_a4_pdf(marker: np.ndarray, dpi: int, mm: float, path: str) -> None:
-    """A4 한 장에 마커 6장(2열 × 3행)을 실제 크기로 배치합니다. 잘라서 여분으로 씁니다.
+    """A4 한 장 위쪽 가운데에 마커 한 장을 실제 크기로 배치합니다.
 
     PDF 페이지 크기를 픽셀 수 ÷ dpi로 정하므로, 100%로 인쇄하면 마커가 정확히 mm 크기가 됩니다.
+    측정에는 마커가 한 장만 필요해 여러 장을 넣지 않습니다.
     """
     from PIL import Image
 
@@ -32,14 +33,15 @@ def _save_a4_pdf(marker: np.ndarray, dpi: int, mm: float, path: str) -> None:
     page = np.full((page_h, page_w), 255, np.uint8)
 
     # 안내 문구. OpenCV 글꼴은 한글을 못 써서 영어로 둡니다.
+    # 페이지 아래쪽에 둡니다. 마커 옆에 글씨가 있으면 획이 원두 입자로 잡히기 때문입니다.
     lines = [
         "DripDraw grind marker - PRINT AT 100% (Actual size). Do NOT 'fit to page'.",
         f"Check with a ruler: the black square must be exactly {mm:g} mm wide.",
-        "Cut one out, lay it flat next to the grounds, shoot from straight above.",
+        "Sprinkle the grounds on this sheet next to the marker. Shoot from straight above.",
     ]
     scale = page_w / 2600
     for i, text in enumerate(lines):
-        y = round((18 + i * 7) * px_per_mm)
+        y = round((265 + i * 7) * px_per_mm)
         cv2.putText(
             page,
             text,
@@ -52,14 +54,9 @@ def _save_a4_pdf(marker: np.ndarray, dpi: int, mm: float, path: str) -> None:
         )
 
     h, w = marker.shape
-    gap = round(15 * px_per_mm)
-    left = (page_w - (w * 2 + gap)) // 2
+    left = (page_w - w) // 2
     top = round(45 * px_per_mm)
-    for row in range(3):
-        for col in range(2):
-            y = top + row * (h + gap)
-            x = left + col * (w + gap)
-            page[y : y + h, x : x + w] = marker
+    page[top : top + h, left : left + w] = marker
 
     Image.fromarray(page).convert("1").save(path, resolution=dpi)
 
@@ -82,23 +79,26 @@ def main() -> None:
     canvas = np.full((side + quiet * 2, side + quiet * 2), 255, np.uint8)
     canvas[quiet : quiet + side, quiet : quiet + side] = marker
 
-    label = f"DripDraw  ID={args.id}  {args.mm:g}mm  (print at 100%)"
-    canvas = cv2.copyMakeBorder(canvas, 0, int(quiet * 0.9), 0, 0, cv2.BORDER_CONSTANT, value=255)
-    cv2.putText(
-        canvas,
-        label,
-        (quiet // 2, canvas.shape[0] - quiet // 3),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        side / 900.0,
-        0,
-        max(1, side // 300),
-        cv2.LINE_AA,
-    )
-
     if args.out.lower().endswith(".pdf"):
+        # PDF에는 마커 아래 라벨을 붙이지 않습니다. 마커 옆 글씨는 획이 원두 입자로 잡힙니다.
+        # 안내 문구는 페이지 아래쪽에 따로 들어갑니다.
         _save_a4_pdf(canvas, args.dpi, args.mm, args.out)
-        print(f"저장: {args.out}  (A4, 마커 {args.mm:g}mm × 6장)")
+        print(f"저장: {args.out}  (A4, 마커 {args.mm:g}mm × 1장)")
     else:
+        label = f"DripDraw  ID={args.id}  {args.mm:g}mm  (print at 100%)"
+        canvas = cv2.copyMakeBorder(
+            canvas, 0, int(quiet * 0.9), 0, 0, cv2.BORDER_CONSTANT, value=255
+        )
+        cv2.putText(
+            canvas,
+            label,
+            (quiet // 2, canvas.shape[0] - quiet // 3),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            side / 900.0,
+            0,
+            max(1, side // 300),
+            cv2.LINE_AA,
+        )
         cv2.imwrite(args.out, canvas)
         print(f"저장: {args.out}  ({canvas.shape[1]}x{canvas.shape[0]} px @ {args.dpi}dpi)")
     print(f"인쇄 후 마커 한 변이 {args.mm:g}mm 인지 자로 확인하세요.")
