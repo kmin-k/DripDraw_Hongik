@@ -51,7 +51,8 @@ export default function GrindPage() {
         <div className="font-medium">준비물: 기준 마커</div>
         <p className="mt-1 text-slate-600">
           사진 속 크기를 실제 크기로 바꾸려면 크기를 아는 기준이 필요합니다. 아래 파일을{" "}
-          <b>"실제 크기(100%)"</b>로 인쇄해 한 장 잘라 쓰세요.
+          <b>"실제 크기(100%)"</b>로 인쇄한 뒤, 그 종이 위 마커 옆에 가루를 뿌려 찍으세요. 일반 A4
+          용지면 충분합니다.
         </p>
         <a
           href="/marker-20mm.pdf"
