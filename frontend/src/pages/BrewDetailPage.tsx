@@ -208,7 +208,8 @@ export default function BrewDetailPage() {
               tickFormatter={(v) => Number(v).toFixed(0)}
               fontSize={12}
             />
-            <YAxis fontSize={12} />
+            {/* 드리퍼를 들면 실측이 잠깐 음수로 내려가 눈금이 -75부터 잡힙니다. 0 아래는 잘라 냅니다. */}
+            <YAxis fontSize={12} domain={[0, "auto"]} allowDataOverflow />
             <Tooltip
               formatter={(value, name) => [`${Number(value).toFixed(1)} g`, name]}
               labelFormatter={(v) => `${Number(v).toFixed(0)}초`}
