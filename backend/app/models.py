@@ -93,6 +93,37 @@ class Brew(Base):
 
     recipe: Mapped["Recipe | None"] = relationship(back_populates="brews")
     feedback: Mapped["Feedback | None"] = relationship(back_populates="brew")
+    experiment_trial: Mapped["ExperimentTrial | None"] = relationship(back_populates="brew")
+
+
+class ExperimentTrial(Base):
+    """사용자 실험의 시행 하나. 추출 기록(brews)에 실험 정보를 붙입니다.
+
+    곡선과 RMSE는 brews에 그대로 두고 여기에는 "누가·어느 단계·어떤 화면으로"만 둡니다.
+    일반 추출과 같은 저장·RMSE 경로를 타야 실험과 실제 사용의 정확도가 같은 정의가 됩니다.
+    실험 기록은 히스토리 목록에 나오지 않습니다 (routers/brews.py).
+    """
+
+    __tablename__ = "experiment_trials"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    brew_id: Mapped[int] = mapped_column(ForeignKey("brews.id"), unique=True)
+    # PILOT: 예비 실험 / MAIN: 본 실험
+    study: Mapped[str] = mapped_column(String(10))
+    # 이름 대신 참가자 코드만 저장합니다 (예: P01, M001).
+    participant_code: Mapped[str] = mapped_column(String(10), index=True)
+    # WARMUP | WATER | BEAN (예비) / PRE | TRAIN | POST (본 실험)
+    stage: Mapped[str] = mapped_column(String(10))
+    # 화면 조건 1~4: 1 무게·타이머만 / 2 + 내 곡선 / 3 + 목표 곡선 / 4 + 목표와 내 곡선
+    condition: Mapped[int] = mapped_column(Integer)
+    # 같은 단계·조건 안에서 몇 번째 시행인지. 1부터 셉니다.
+    trial_no: Mapped[int] = mapped_column(Integer)
+    # 진행자가 무효 처리한 시행(연결 끊김, 물 넘침 등). 지우지 않고 남겨 분석에서 뺍니다.
+    valid: Mapped[bool] = mapped_column(Boolean, default=True)
+    note: Mapped[str | None] = mapped_column(String(300), default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    brew: Mapped["Brew"] = relationship(back_populates="experiment_trial")
 
 
 class Feedback(Base):

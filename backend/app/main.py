@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.migrate import upgrade_to_head
-from app.routers import beans, brews, feedback, recipes, vision
+from app.routers import beans, brews, experiment, feedback, recipes, vision
 
 
 @asynccontextmanager
@@ -65,6 +65,7 @@ app.include_router(recipes.stored)
 app.include_router(brews.router)
 app.include_router(feedback.router)
 app.include_router(vision.router)
+app.include_router(experiment.router)
 
 
 @app.get("/health", tags=["health"])
