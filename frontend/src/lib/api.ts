@@ -6,6 +6,7 @@
  * 둘 다 브라우저에서만 가능한 일이라 옮길 수 없습니다.
  */
 
+import type { Stage, Study } from "./experiment";
 import type { Curve } from "./rmse";
 
 /**
@@ -179,11 +180,37 @@ export interface BrewRequest {
   endedAt: string;
   /** 다운샘플링하지 않은 원본 곡선 (docs/api.md) */
   actualCurve: Curve;
+  /** 실험 시행일 때만. 기록과 같은 요청으로 보내 한 번에 저장합니다. */
+  experiment?: ExperimentTag;
 }
 
 export interface BrewResult {
   brewId: number;
   /** 서버가 다시 계산한 값. 자유 모드는 null입니다. */
+  rmse: number | null;
+  durationSec: number;
+  finalWeightG: number;
+  /** 실험 시행으로 저장했을 때만 있습니다. */
+  trialId?: number | null;
+}
+
+// --- 사용자 실험 ---
+
+export interface ExperimentTag {
+  study: Study;
+  /** 이름 대신 코드만 (P01, M001) */
+  participantCode: string;
+  stage: Stage;
+  condition: number;
+  trialNo: number;
+}
+
+export interface ExperimentTrial extends ExperimentTag {
+  trialId: number;
+  brewId: number;
+  valid: boolean;
+  note: string | null;
+  startedAt: string;
   rmse: number | null;
   durationSec: number;
   finalWeightG: number;
@@ -350,4 +377,20 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ applied }),
     }),
+  /** 진행 순서대로. 진행 화면이 어디까지 했는지를 이 기록으로 판단합니다. */
+  listTrials: (study: Study, participant: string) =>
+    request<{ items: ExperimentTrial[] }>(
+      `/api/experiment/trials?study=${study}&participant=${encodeURIComponent(participant)}`,
+    ),
+  /** 무효 표시와 사유. 기록은 지우지 않습니다. */
+  updateTrial: (trialId: number, body: { valid?: boolean; note?: string | null }) =>
+    request<ExperimentTrial>(`/api/experiment/trials/${trialId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
 };
+
+/** 분석용 CSV. 배포에서는 관리자 비밀번호를 묻습니다 (deploy/Caddyfile). */
+export function experimentExportUrl(study: Study, kind: "summary" | "curves"): string {
+  return `/api/experiment/export/${kind}.csv?study=${study}`;
+}

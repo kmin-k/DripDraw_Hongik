@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import type { DrinkType } from "../lib/api";
 import { DRINK } from "../lib/labels";
@@ -102,6 +102,13 @@ export default function SettingsPage() {
 
       <p className="text-xs text-slate-500">
         추출 기록과 원두는 <b>서버에 저장</b>됩니다. 여기서 지워지지 않습니다.
+      </p>
+
+      {/* 연구용 화면. 일반 사용자가 실수로 들어가지 않도록 맨 아래 작게 둡니다. */}
+      <p className="text-xs text-slate-400">
+        <Link to="/experiment" className="underline">
+          사용자 실험 (진행자용)
+        </Link>
       </p>
     </section>
   );

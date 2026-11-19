@@ -48,6 +48,10 @@ FastAPI가 `/docs`에 Swagger를 자동 생성하므로, **이 문서는 계약 
 | `GET` | `/api/brews/{id}` | 5 |
 | `DELETE` | `/api/brews/{id}` | 5 |
 | `POST` | `/api/vision/grind` | 6 |
+| `GET` | `/api/experiment/trials` | 실험 |
+| `PATCH` | `/api/experiment/trials/{id}` | 실험 |
+| `GET` | `/api/experiment/export/summary.csv` | 실험 |
+| `GET` | `/api/experiment/export/curves.csv` | 실험 |
 
 ---
 
@@ -253,8 +257,26 @@ Target이 구간 선형이므로 보간이 근사가 아니라 **정확**하고,
 **응답 `201`**
 
 ```json
-{ "brewId": 34, "rmse": 4.71, "durationSec": 208, "finalWeightG": 298.4 }
+{ "brewId": 34, "rmse": 4.71, "durationSec": 208, "finalWeightG": 298.4, "trialId": null }
 ```
+
+**실험 시행으로 저장** — 선택 필드 `experiment`를 함께 보내면 기록과 같은 트랜잭션으로 시행 정보를
+남기고 응답의 `trialId`에 그 id를 돌려줍니다. 자세한 내용은 아래 "사용자 실험".
+
+```json
+{
+  "recipeId": 12,
+  "startedAt": "...", "endedAt": "...", "actualCurve": [[0,0]],
+  "experiment": { "study": "PILOT", "participantCode": "P01", "stage": "WATER", "condition": 3, "trialNo": 1 }
+}
+```
+
+| 상태 | 조건 |
+|---|---|
+| 422 | `experiment`가 있는데 `recipeId`가 없음 — 실험의 종속변수가 목표 대비 RMSE라서 |
+| 422 | 참가자 코드 형식 위반(`^[A-Z][0-9]{2,3}$`), 조건이 1~4 밖 |
+
+실험 시행은 `GET /api/brews`(히스토리)에 나오지 않습니다.
 
 ## `POST /api/brews/{id}/save-as-recipe` — 추출을 목표로 저장
 
@@ -478,6 +500,50 @@ PATCH /api/feedback/{id}   { "applied": true }
 > **측정 결과와 사진은 저장하지 않습니다.** 사진은 측정의 입력일 뿐이고, 측정값은 레시피 화면의
 > `d50Um` 칸에 들어가 **레시피에 `d50_um`으로 남습니다.** 그 레시피로 내린 기록에서 당시 분쇄도를
 > 알 수 있어 측정 이력을 따로 쌓을 이유가 없습니다. ERD의 `GRIND_ANALYSIS`는 쓰지 않습니다.
+---
+
+## 사용자 실험
+
+화면 조건에 따라 주수 정확도가 달라지는지 보는 실험용입니다. 실험 설계는 "DripDraw 예비 실험 의뢰서",
+화면 조건과 배정표는 `frontend/src/lib/experiment.ts`가 기준입니다. 진행 화면은 `/experiment`(설정 화면 맨 아래 링크).
+
+| 필드 | 값 |
+|---|---|
+| `study` | `PILOT`(예비) · `MAIN`(본 실험) |
+| `participantCode` | 이름 대신 코드만. `P01`, `M001` 형식 |
+| `stage` | 예비 `WARMUP` · `WATER` · `BEAN` / 본 실험 `PRE` · `TRAIN` · `POST` |
+| `condition` | 1 무게·타이머만 / 2 + 내 곡선 / 3 + 목표 곡선 / 4 + 목표와 내 곡선 |
+| `trialNo` | 같은 단계·조건 안에서 몇 번째인지 (1부터) |
+
+**목표 대비 편차와 RMSE는 어느 조건에서도 화면에 보여 주지 않습니다.** RMSE는 일반 추출과 같은 정의로
+서버가 계산해 저장하고, 분석에서만 씁니다.
+
+### `GET /api/experiment/trials?study=PILOT&participant=P01`
+
+진행 순서(저장 순서)대로 시행을 돌려줍니다. 곡선은 담지 않습니다. `participant`는 생략할 수 있습니다.
+
+```json
+{ "items": [{ "trialId": 41, "brewId": 9, "study": "PILOT", "participantCode": "P01", "stage": "WATER",
+  "condition": 3, "trialNo": 1, "valid": true, "note": null, "startedAt": "2026-11-20T05:00:00Z",
+  "rmse": 2.5, "durationSec": 168, "finalWeightG": 299.1 }] }
+```
+
+### `PATCH /api/experiment/trials/{id}`
+
+진행자의 판정. `{ "valid": false, "note": "저울 연결 끊김" }` — 둘 다 선택입니다.
+기록은 지우지 않습니다. 무효 시행도 남겨야 왜 뺐는지 설명할 수 있습니다. 같은 시행을 다시 하면 새 기록이 쌓입니다.
+
+### `GET /api/experiment/export/summary.csv?study=PILOT` · `.../curves.csv?study=PILOT`
+
+분석용 CSV (UTF-8, 엑셀용 BOM). 무효 시행도 포함하며 `valid` 열(1/0)로 거릅니다.
+
+| 파일 | 행 | 열 |
+|---|---|---|
+| `summary.csv` | 시행 1건 | `trial_id, study, participant_code, stage, condition, trial_no, valid, note, brew_id, recipe_id, started_at, duration_sec, final_weight_g, rmse` |
+| `curves.csv` | 측정점 1개 (긴 형식) | `trial_id, participant_code, stage, condition, trial_no, valid, t_sec, weight_g` |
+
+배포에서는 두 파일에 관리자 비밀번호를 겁니다 (`deploy/Caddyfile`).
+
 ---
 
 ## 확정된 사항

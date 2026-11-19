@@ -24,6 +24,12 @@
 		admin {$ADMIN_PASSWORD_HASH}
 	}
 
+	# 실험 데이터 내려받기. 참가자 코드뿐이지만 연구 자료라 공개 주소로 받아 가지 못하게 합니다.
+	@experimentExport path /api/experiment/export/*
+	basic_auth @experimentExport {
+		admin {$ADMIN_PASSWORD_HASH}
+	}
+
 	# 백엔드에 닿기 전에 본문 크기를 막습니다. 백엔드의 25 MB 검사는 전부 읽은 뒤에야 동작합니다.
 	# 분쇄도 사진은 multipart 여백을 더한 26 MB, 나머지는 최대 곡선(18,000점)이 넉넉히 들어가는 1 MB.
 	@upload path /api/vision/*

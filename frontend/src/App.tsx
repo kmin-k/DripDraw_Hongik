@@ -5,6 +5,8 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import BeansPage from "./pages/BeansPage";
 import BrewDetailPage from "./pages/BrewDetailPage";
 import BrewPage from "./pages/BrewPage";
+import ExperimentCardPage from "./pages/ExperimentCardPage";
+import ExperimentPage from "./pages/ExperimentPage";
 import FeedbackPage from "./pages/FeedbackPage";
 import GrindPage from "./pages/GrindPage";
 import HistoryPage from "./pages/HistoryPage";
@@ -34,7 +36,8 @@ const TABS = [
 ];
 
 /** 흐름 중간 화면. 탭바를 숨겨 "지금 하던 일"에 집중하게 합니다. */
-const FLOW_PATHS = ["/recipe", "/brew", "/feedback", "/onboarding"];
+// 실험 화면은 참가자가 탭을 눌러 다른 화면으로 가지 않게 탭바를 숨깁니다.
+const FLOW_PATHS = ["/recipe", "/brew", "/feedback", "/onboarding", "/experiment"];
 
 function TabBar() {
   return (
@@ -72,7 +75,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="border-b bg-white">
+      <header className="border-b bg-white print:hidden">
         <div className="mx-auto flex max-w-3xl items-center px-4 py-3">
           {/* 어느 화면에서든 홈으로 — 앱에서 로고를 누르면 첫 화면으로 가는 것이 기본 동작입니다. */}
           <Link
@@ -105,6 +108,9 @@ export default function App() {
             <Route path="/history" element={<HistoryPage />} />
             {/* 상세는 주소에 id를 둡니다. 새로고침해도 살아남고 링크를 그대로 열 수 있습니다. */}
             <Route path="/history/:brewId" element={<BrewDetailPage />} />
+            {/* 사용자 실험(진행자용). 탭에는 두지 않고 설정 화면에서 들어갑니다. */}
+            <Route path="/experiment" element={<ExperimentPage />} />
+            <Route path="/experiment/card" element={<ExperimentCardPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </ErrorBoundary>

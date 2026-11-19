@@ -176,6 +176,41 @@ class RecipeList(CamelModel):
     items: list[RecipeListItem]
 
 
+# --- 사용자 실험 ---
+
+
+class ExperimentStudy(StrEnum):
+    PILOT = "PILOT"  # 예비 실험
+    MAIN = "MAIN"  # 본 실험
+
+
+class ExperimentStage(StrEnum):
+    # 예비 실험
+    WARMUP = "WARMUP"  # 장비 적응. 분석에서 뺍니다.
+    WATER = "WATER"  # 물만 붓기
+    BEAN = "BEAN"  # 실제 추출
+    # 본 실험
+    PRE = "PRE"  # 사전 평가
+    TRAIN = "TRAIN"  # 연습
+    POST = "POST"  # 사후 평가
+
+
+#: 참가자 코드. 이름 같은 개인정보가 들어오지 않도록 형식을 막습니다 (P01, M001).
+ParticipantCode = Annotated[str, Field(pattern=r"^[A-Z][0-9]{2,3}$")]
+
+
+class ExperimentTag(CamelModel):
+    """추출 기록에 붙이는 실험 정보. 기록과 같은 요청으로 보내 한 번에 저장합니다."""
+
+    study: ExperimentStudy
+    participant_code: ParticipantCode
+    stage: ExperimentStage
+    #: 화면 조건 1~4 (docs/api.md "사용자 실험")
+    condition: int = Field(ge=1, le=4)
+    #: 같은 단계·조건 안에서 몇 번째 시행인지
+    trial_no: int = Field(ge=1, le=20)
+
+
 # --- 추출 기록 (Phase 2) ---
 
 
@@ -191,6 +226,16 @@ class BrewCreate(CamelModel):
     ended_at: UtcNaiveDateTime
     #: [[경과 시간(초), 누적 물량(g)], ...] — 다운샘플링하지 않은 원본
     actual_curve: list[list[float]] = Field(min_length=1, max_length=C.MAX_CURVE_POINTS)
+    #: 실험 시행일 때만 보냅니다. 일반 추출은 생략합니다.
+    experiment: ExperimentTag | None = None
+
+    @model_validator(mode="after")
+    def experiment_needs_target(self) -> Self:
+        # 실험의 종속변수는 목표 대비 RMSE입니다. 목표 없이 저장하면 분석할 수 없는 기록이 됩니다.
+        # 목표 곡선을 화면에 숨기는 조건(1·2)도 목표 레시피는 함께 보내야 합니다.
+        if self.experiment is not None and self.recipe_id is None:
+            raise ValueError("실험 시행은 목표 레시피(recipeId)가 있어야 합니다")
+        return self
 
     @model_validator(mode="after")
     def check_curve_shape(self) -> Self:
@@ -217,6 +262,35 @@ class BrewOut(CamelModel):
     rmse: float | None
     duration_sec: int
     final_weight_g: float
+    #: 실험 시행으로 저장했을 때만 있습니다. 진행자가 무효 처리할 때 씁니다.
+    trial_id: int | None = None
+
+
+class ExperimentTrialOut(CamelModel):
+    trial_id: int
+    brew_id: int
+    study: ExperimentStudy
+    participant_code: str
+    stage: ExperimentStage
+    condition: int
+    trial_no: int
+    valid: bool
+    note: str | None
+    started_at: UtcDateTime
+    rmse: float | None
+    duration_sec: int
+    final_weight_g: float
+
+
+class ExperimentTrialList(CamelModel):
+    items: list[ExperimentTrialOut]
+
+
+class ExperimentTrialUpdate(CamelModel):
+    """진행자의 판정. 기록은 지우지 않고 무효 표시와 사유만 남깁니다."""
+
+    valid: bool | None = None
+    note: str | None = Field(default=None, max_length=300)
 
 
 class BrewListItem(CamelModel):

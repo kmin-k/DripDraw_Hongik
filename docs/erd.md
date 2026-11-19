@@ -11,6 +11,7 @@ erDiagram
     BREW ||--o| FEEDBACK : "맛 평가"
     FEEDBACK ||--o| RECIPE : "제안된 다음 레시피"
     BEAN ||--o{ GRIND_ANALYSIS : "분쇄도 측정"
+    BREW ||--o| EXPERIMENT_TRIAL : "실험 시행"
 
     BEAN {
         int id PK
@@ -68,6 +69,19 @@ erDiagram
         datetime created_at
     }
 
+    EXPERIMENT_TRIAL {
+        int id PK
+        int brew_id FK "UNIQUE"
+        string study "PILOT|MAIN"
+        string participant_code "P01 등. 이름 저장 안 함"
+        string stage "WARMUP|WATER|BEAN|PRE|TRAIN|POST"
+        int condition "화면 조건 1~4"
+        int trial_no
+        boolean valid "진행자가 무효 처리하면 false"
+        string note
+        datetime created_at
+    }
+
     GRIND_ANALYSIS {
         int id PK
         int bean_id FK
@@ -85,6 +99,7 @@ erDiagram
 - **BREW ↔ FEEDBACK 1:1** — 추출 1건당 맛 평가 1건. `brew_id`에 UNIQUE.
 - **`applied` 저장** — 사용자가 제안을 받아들였는지 여부가 나중에 개인화 모델의 학습 신호가 됩니다. 발표에서 "선택 결과를 축적하도록 설계했다"의 근거.
 - **`RECIPE.bean_id`는 NULL 허용** — 원두를 등록하지 않고 조건만 직접 넣어 계산하는 경로가 있습니다([`api.md`](api.md) `POST /api/recipe/generate`). 이 경우 가리킬 원두가 없습니다.
+- **EXPERIMENT_TRIAL을 BREW에 1:1로 붙임** — 실험 시행도 일반 추출과 같은 저장·RMSE 경로를 타야 논문의 정확도와 앱의 정확도가 같은 정의가 됩니다. 곡선과 RMSE는 BREW에 두고, 여기에는 누가·어느 단계·어떤 화면으로만 둡니다. 무효 시행은 지우지 않고 `valid=false`로 남깁니다. 실험 기록은 히스토리 목록에서 뺍니다.
 
 **추출 모드가 두 가지라서 생긴 NULL**
 

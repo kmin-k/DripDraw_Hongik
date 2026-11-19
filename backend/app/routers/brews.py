@@ -7,7 +7,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session, defer, selectinload
 
 from app.database import get_db
-from app.models import Bean, Brew, Recipe
+from app.models import Bean, Brew, ExperimentTrial, Recipe
 from app.routers.recipes import recipe_out
 from app.schemas import (
     BrewCreate,
@@ -61,6 +61,14 @@ def create_brew(payload: BrewCreate, db: DbSession) -> BrewOut:
         actual_curve=payload.actual_curve,
     )
     db.add(brew)
+
+    # 실험 정보는 기록과 같은 트랜잭션으로 저장합니다. 따로 보내면 기록만 남고 실험 정보가
+    # 빠진 시행이 생길 수 있고, 그런 기록은 어느 참가자·조건인지 알 수 없어 버려야 합니다.
+    trial: ExperimentTrial | None = None
+    if payload.experiment is not None:
+        trial = ExperimentTrial(brew=brew, **payload.experiment.model_dump())
+        db.add(trial)
+
     db.commit()
     db.refresh(brew)
 
@@ -69,6 +77,7 @@ def create_brew(payload: BrewCreate, db: DbSession) -> BrewOut:
         rmse=brew.rmse,
         duration_sec=brew.duration_sec,
         final_weight_g=brew.final_weight_g,
+        trial_id=trial.id if trial else None,
     )
 
 
@@ -92,6 +101,9 @@ def list_brews(db: DbSession, limit: Annotated[int, Query(ge=1, le=200)] = 50) -
             selectinload(Brew.recipe).selectinload(Recipe.bean),
             selectinload(Brew.feedback),
         )
+        # 실험 시행은 참가자의 기록이지 이 앱 사용자의 기록이 아닙니다. 히스토리에 섞지 않습니다.
+        # 실험 기록은 /api/experiment에서 따로 봅니다.
+        .where(~select(ExperimentTrial.id).where(ExperimentTrial.brew_id == Brew.id).exists())
         .order_by(Brew.started_at.desc(), Brew.id.desc())
         .limit(limit)
     ).all()
@@ -132,6 +144,9 @@ def delete_brew(brew_id: int, db: DbSession) -> None:
 
     if brew.feedback is not None:
         db.delete(brew.feedback)
+    # 실험 시행 정보는 기록 없이 의미가 없습니다. 함께 지웁니다.
+    if brew.experiment_trial is not None:
+        db.delete(brew.experiment_trial)
     # 이 기록에서 만든 레시피는 남기되, 사라진 기록을 가리키지 않게 합니다.
     db.execute(update(Recipe).where(Recipe.source_brew_id == brew_id).values(source_brew_id=None))
     db.delete(brew)
